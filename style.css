@@ -96,6 +96,11 @@ h2 {
     box-shadow: 0 6px 0 #333;
     top: 0;
 }
+.btn.small {
+    padding: 10px 15px;
+    font-size: 0.7rem;
+    width: auto;
+}
 
 /* --- Inputs & Forms --- */
 input {
@@ -142,6 +147,11 @@ label { display: block; margin-bottom: 10px; font-size: 0.9rem; }
     width: 100%;
     margin-bottom: 20px;
 }
+.header-controls {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+}
 .game-id-tag {
     background-color: #16213e;
     border: 2px solid #0f3460;
@@ -168,7 +178,6 @@ label { display: block; margin-bottom: 10px; font-size: 0.9rem; }
     box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     text-align: left;
     transition: opacity 0.3s ease;
-    position: relative;
 }
 .player-card.disconnected {
     opacity: 0.5;
@@ -196,14 +205,6 @@ label { display: block; margin-bottom: 10px; font-size: 0.9rem; }
     border-radius: 12px;
     font-weight: bold;
     color: white;
-}
-.voted-indicator {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    font-size: 0.8rem;
-    font-weight: bold;
-    color: #50c878;
 }
 .role-tag.imposter { background-color: #e94560; }
 .role-tag.crew { background-color: #50c878; }
@@ -247,11 +248,6 @@ label { display: block; margin-bottom: 10px; font-size: 0.9rem; }
     outline: none;
 }
 .game-input-area .btn {
-    font-family: 'Press Start 2P', cursive;
-}
-#vote-timer {
-    font-size: 1.5rem;
-    color: #e94560;
     font-family: 'Press Start 2P', cursive;
 }
 

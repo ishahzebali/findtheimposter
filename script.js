@@ -502,6 +502,11 @@ document.getElementById('copyGameIdBtn').addEventListener('click', () => {
     navigator.clipboard.writeText(currentGameId);
     alert('Game ID copied!');
 });
+document.getElementById('game-screen').addEventListener('click', (e) => {
+    if (e.target.id === 'exitGameBtn') {
+        leaveGame();
+    }
+});
 
 document.getElementById('lobby-screen').addEventListener('click', async (e) => {
     if (e.target.id === 'startGameBtn') {
