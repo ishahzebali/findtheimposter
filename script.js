@@ -169,10 +169,13 @@ async function renderRoleReveal(gameData) {
 
     showScreen('role-reveal');
     
-    setTimeout(async () => {
+    const gameRef = doc(db, gamesCollectionPath, currentGameId);
+    await updateDoc(gameRef, { [`revealedRoles.${currentUserId}`]: true });
+
+    setTimeout(() => {
         if (currentGameId) {
-            const gameRef = doc(db, gamesCollectionPath, currentGameId);
-            await updateDoc(gameRef, { [`revealedRoles.${currentUserId}`]: true });
+            renderGame(gameData);
+            showScreen('game');
             isRevealingRole = false;
         }
     }, 4000);
@@ -409,7 +412,7 @@ function joinGame(gameId) {
             const me = gameData.players.find(p => p.uid === currentUserId);
             const activePlayers = gameData.players.filter(p => !p.disconnected);
 
-            if (countdownInterval && gameData.status !== 'starting' && gameData.status !== 'voting') {
+            if (gameData.status !== 'starting' && countdownInterval) {
                 clearInterval(countdownInterval);
                 countdownInterval = null;
             }
