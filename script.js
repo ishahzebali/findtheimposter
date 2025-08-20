@@ -75,6 +75,8 @@ function showScreen(screenName) {
         screens[screenName].classList.remove('hidden');
     }
     document.querySelectorAll('.confetti').forEach(c => c.remove());
+    if (countdownInterval) clearInterval(countdownInterval);
+    countdownInterval = null;
 }
 
 // --- Sound & Celebration ---
@@ -449,26 +451,18 @@ function joinGame(gameId) {
                 case 'voting': 
                     renderGame(gameData); 
                     showScreen('game'); 
-                    if (me?.isHost) {
-                        setTimeout(async () => {
-                            const freshSnap = await getDoc(doc(db, gamesCollectionPath, gameId));
-                            if (freshSnap.exists() && freshSnap.data().status === 'voting') {
-                                await tallyVotes(freshSnap.data());
-                            }
-                        }, 30000);
-                    }
-                    const timerEl = document.getElementById('vote-timer');
-                    if (timerEl) {
-                        let timeLeft = 30;
-                        timerEl.textContent = timeLeft;
-                        countdownInterval = setInterval(() => {
-                            timeLeft--;
-                            timerEl.textContent = timeLeft > 0 ? timeLeft : 0;
-                            if (timeLeft <= 0) {
-                                clearInterval(countdownInterval);
-                                countdownInterval = null;
-                            }
-                        }, 1000);
+                    if (!countdownInterval) {
+                        const timerEl = document.getElementById('vote-timer');
+                        if (timerEl) {
+                            countdownInterval = setInterval(() => {
+                                const remaining = Math.ceil((gameData.voteEndTime.toDate() - new Date()) / 1000);
+                                timerEl.textContent = remaining > 0 ? remaining : 0;
+                                if (remaining <= 0) {
+                                    clearInterval(countdownInterval);
+                                    countdownInterval = null;
+                                }
+                            }, 1000);
+                        }
                     }
                     break;
                 case 'round-end': renderRoundEnd(gameData); showScreen('game'); break;
@@ -607,7 +601,7 @@ document.getElementById('game-screen').addEventListener('click', async (e) => {
             const votes = Object.values(newRoundChoices).filter(c => c === 'vote').length;
             const continues = activePlayers.length - votes;
             if (votes > continues) {
-                await updateDoc(gameRef, { status: 'voting' });
+                await updateDoc(gameRef, { status: 'voting', voteEndTime: new Date(Date.now() + 30000) });
             } else {
                 const newTurnOrder = shuffleArray([...gameData.turnOrder]);
                 await updateDoc(gameRef, { 
