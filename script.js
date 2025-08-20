@@ -258,7 +258,10 @@ document.getElementById('lobby-screen').addEventListener('click', async (e) => {
         
         const gameData = gameSnap.data();
         const secretWord = getRandomWord();
-        const imposterIndex = Math.floor(Math.random() * gameData.players.length);
+        
+        // --- CHANGE: Ensure imposter is not the first player ---
+        const imposterIndex = 1 + Math.floor(Math.random() * (gameData.players.length - 1));
+        
         const playersWithRoles = gameData.players.map((p, i) => ({...p, role: i === imposterIndex ? 'imposter' : 'crew'}));
 
         await updateDoc(gameRef, {
@@ -314,7 +317,8 @@ document.getElementById('game-screen').addEventListener('click', async (e) => {
     // Play Again
     if (e.target.id === 'playAgainBtn') {
          const newSecretWord = getRandomWord();
-         const imposterIndex = Math.floor(Math.random() * gameData.players.length);
+         // --- CHANGE: Ensure imposter is not the first player ---
+         const imposterIndex = 1 + Math.floor(Math.random() * (gameData.players.length - 1));
          const newPlayers = gameData.players.map((p, i) => ({...p, role: i === imposterIndex ? 'imposter' : 'crew'}));
          await updateDoc(gameRef, {
              status: 'playing', secretWord: newSecretWord, players: newPlayers,
