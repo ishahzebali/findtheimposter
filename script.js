@@ -41,6 +41,16 @@ const screens = {
 const wordList = ["Apple", "Banana", "Carrot", "Internet", "Java", "Kiwi", "Sun", "Moon", "Dog", "Cat", "Car", "Bicycle"];
 const getRandomWord = () => wordList[Math.floor(Math.random() * wordList.length)];
 
+// --- Helper: Shuffle Array ---
+function shuffleArray(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+}
+
+
 // --- UI Control ---
 function showScreen(screenName) {
     Object.values(screens).forEach(screen => screen.classList.add('hidden'));
@@ -59,8 +69,8 @@ function renderLobby(gameData) {
     playerList.innerHTML = '';
     gameData.players.forEach(player => {
         const playerDiv = document.createElement('div');
-        playerDiv.className = 'bg-gray-50 p-3 rounded-md text-left';
-        playerDiv.innerHTML = `<p class="font-semibold text-gray-800">${player.name} ${player.isHost ? '(Host)' : ''}</p>`;
+        playerDiv.className = 'player-list-item'; // Using custom class
+        playerDiv.innerHTML = `<p>${player.name} ${player.isHost ? '(Host)' : ''}</p>`;
         playerList.appendChild(playerDiv);
     });
 
@@ -84,16 +94,19 @@ function renderGame(gameData) {
     const isMyTurn = gameData.currentPlayerUid === currentUserId;
     const gameContent = document.getElementById('game-content');
     
-    let playersHTML = gameData.players.map(player => {
+    // Use the turn order stored in the game data
+    const orderedPlayers = gameData.turnOrder.map(uid => gameData.players.find(p => p.uid === uid));
+
+    let playersHTML = orderedPlayers.map(player => {
         const wordsForPlayer = gameData.words.filter(w => w.uid === player.uid).map(w => w.word).join(', ');
         const isCurrentPlayer = gameData.currentPlayerUid === player.uid;
         const canVote = player.uid !== currentUserId && gameData.status === 'voting' && !(gameData.votes && gameData.votes[currentUserId]);
         
         return `
-            <div class="p-4 rounded-lg shadow-md ${isCurrentPlayer && gameData.status === 'playing' ? 'bg-yellow-200 ring-2 ring-yellow-500' : 'bg-white'}">
-                <p class="font-bold text-gray-800">${player.name}</p>
-                <p class="text-xl font-light text-gray-600 mt-2 h-auto min-h-[2.5rem]">${wordsForPlayer || '...'}</p>
-                ${canVote ? `<button data-vote-uid="${player.uid}" class="vote-btn mt-2 w-full bg-blue-500 text-white font-bold py-2 px-4 rounded hover:bg-blue-700">Vote</button>` : ''}
+            <div class="player-card ${isCurrentPlayer && gameData.status === 'playing' ? 'current-player' : ''}">
+                <p class="name">${player.name}</p>
+                <p class="word">${wordsForPlayer || '...'}</p>
+                ${canVote ? `<button data-vote-uid="${player.uid}" class="btn blue vote-btn">Vote</button>` : ''}
             </div>
         `;
     }).join('');
@@ -101,30 +114,30 @@ function renderGame(gameData) {
     let turnHTML = '';
     if (gameData.status === 'playing' && isMyTurn) {
         turnHTML = `
-            <div class="mt-6 p-4 bg-white rounded-lg shadow-md">
-                <h3 class="text-xl font-bold text-center text-gray-800">Round ${gameData.round}: It's your turn!</h3>
-                <div class="flex gap-2 mt-2">
-                    <input id="wordInput" type="text" placeholder="Enter your word..." class="flex-grow p-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <button id="submitWordBtn" class="bg-blue-500 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700">Submit</button>
+            <div class="game-input-area">
+                <h3>Round ${gameData.round}: It's your turn!</h3>
+                <div style="display: flex; gap: 10px;">
+                    <input id="wordInput" type="text" placeholder="Enter your word...">
+                    <button id="submitWordBtn" class="btn blue">Submit</button>
                 </div>
             </div>
         `;
     } else if (gameData.status === 'voting') {
          turnHTML = `
-            <div class="mt-6 p-4 bg-white rounded-lg shadow-md text-center">
-                <h3 class="text-2xl font-bold text-gray-800">Vote for the Imposter!</h3>
-                <p class="text-gray-600">${(gameData.votes && gameData.votes[currentUserId]) ? 'Waiting for others...' : 'Click vote on a player card.'}</p>
+            <div class="game-input-area">
+                <h3>Vote for the Imposter!</h3>
+                <p>${(gameData.votes && gameData.votes[currentUserId]) ? 'Waiting for others...' : 'Click vote on a player card.'}</p>
             </div>
          `;
     }
 
     gameContent.innerHTML = `
         <div class="text-center mb-6">
-            <h2 class="text-2xl font-light text-gray-700">Your Word Is:</h2>
-            <p class="text-5xl font-bold text-blue-600">${me.role === 'imposter' ? '???' : gameData.secretWord}</p>
-            <p class="text-lg font-semibold mt-2 text-red-500">${me.role.toUpperCase()}</p>
+            <h2 class="subtitle" style="font-size: 1.2rem;">Your Word Is:</h2>
+            <p style="font-size: 2.5rem; color: #e94560; text-shadow: none;">${me.role === 'imposter' ? '???' : gameData.secretWord}</p>
+            <p style="font-size: 1rem; color: #fff;">You are: <span class="${me.role === 'imposter' ? 'role-tag imposter' : 'role-tag crew'}">${me.role.toUpperCase()}</span></p>
         </div>
-        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
+        <div class="player-cards-grid">
             ${playersHTML}
         </div>
         ${turnHTML}
@@ -135,32 +148,34 @@ function renderRoundEnd(gameData) {
     const gameContent = document.getElementById('game-content');
     const myChoice = gameData.roundChoices ? gameData.roundChoices[currentUserId] : null;
 
-    let playersHTML = gameData.players.map(player => {
+    const orderedPlayers = gameData.turnOrder.map(uid => gameData.players.find(p => p.uid === uid));
+
+    let playersHTML = orderedPlayers.map(player => {
         const wordsForPlayer = gameData.words.filter(w => w.uid === player.uid).map(w => w.word).join(', ');
         return `
-            <div class="p-4 rounded-lg shadow-md bg-white">
-                <p class="font-bold text-gray-800">${player.name}</p>
-                <p class="text-xl font-light text-gray-600 mt-2 h-auto min-h-[2.5rem]">${wordsForPlayer || '...'}</p>
+            <div class="player-card">
+                <p class="name">${player.name}</p>
+                <p class="word">${wordsForPlayer || '...'}</p>
             </div>
         `;
     }).join('');
 
     let choiceHTML = '';
     if (myChoice) {
-        choiceHTML = `<p class="text-lg text-gray-700 mt-4">You chose to ${myChoice}. Waiting for other players...</p>`;
+        choiceHTML = `<p class="subtitle" style="font-size: 1rem;">You chose to ${myChoice}. Waiting for other players...</p>`;
     } else {
         choiceHTML = `
-            <div class="flex gap-4 mt-4">
-                <button id="continueBtn" class="flex-1 bg-green-500 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-700">Continue to Next Round</button>
-                <button id="voteNowBtn" class="flex-1 bg-red-500 text-white font-bold py-3 px-6 rounded-lg hover:bg-red-700">Vote Now</button>
+            <div style="display: flex; gap: 15px; margin-top: 20px;">
+                <button id="continueBtn" class="btn green">Continue</button>
+                <button id="voteNowBtn" class="btn red">Vote Now</button>
             </div>
         `;
     }
 
     gameContent.innerHTML = `
-        <div class="text-center bg-white p-8 rounded-lg shadow-xl">
-            <h2 class="text-3xl font-bold mb-4">End of Round ${gameData.round - 1}</h2>
-            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">${playersHTML}</div>
+        <div class="game-input-area">
+            <h3>End of Round ${gameData.round - 1}</h3>
+            <div class="player-cards-grid">${playersHTML}</div>
             ${choiceHTML}
         </div>
     `;
@@ -175,24 +190,24 @@ function renderFinished(gameData) {
     let playersHTML = gameData.players.map(player => {
         const wordsForPlayer = gameData.words.filter(w => w.uid === player.uid).map(w => w.word).join(', ');
         return `
-            <div class="p-4 rounded-lg shadow-md bg-white">
-                <div class="flex justify-between items-center">
-                    <p class="font-bold text-gray-800">${player.name}</p>
-                    <span class="px-2 py-1 text-xs font-semibold rounded-full ${player.role === 'imposter' ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}">${player.role.toUpperCase()}</span>
+            <div class="player-card">
+                <div style="display:flex; justify-content: space-between; align-items: center;">
+                    <p class="name">${player.name}</p>
+                    <span class="role-tag ${player.role === 'imposter' ? 'imposter' : 'crew'}">${player.role.toUpperCase()}</span>
                 </div>
-                <p class="text-xl font-light text-gray-600 mt-2 h-auto min-h-[2.5rem]">${wordsForPlayer}</p>
+                <p class="word">${wordsForPlayer}</p>
             </div>
         `;
     }).join('');
 
     gameContent.innerHTML = `
-        <div class="text-center bg-white p-8 rounded-lg shadow-xl">
-            <h2 class="text-4xl font-bold mb-4">${gameData.winner} Wins!</h2>
-            <p class="text-xl mb-2">The secret word was: <span class="font-bold text-blue-600">${gameData.secretWord}</span></p>
-            <p class="text-xl mb-2">The imposter was: <span class="font-bold text-red-600">${imposter.name}</span></p>
-            <p class="text-xl mb-6">You voted out: <span class="font-bold text-gray-800">${votedOutPlayer?.name || 'Nobody'}</span></p>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">${playersHTML}</div>
-            ${me.isHost ? `<button id="playAgainBtn" class="bg-green-500 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-700">Play Again</button>` : '<p>Waiting for host to start a new game...</p>'}
+        <div class="game-input-area">
+            <h2 style="font-size: 2rem; color: #333;">${gameData.winner} Wins!</h2>
+            <p class="subtitle">The secret word was: <strong>${gameData.secretWord}</strong></p>
+            <p class="subtitle">The imposter was: <strong>${imposter.name}</strong></p>
+            <p class="subtitle">You voted out: <strong>${votedOutPlayer?.name || 'Nobody'}</strong></p>
+            <div class="player-cards-grid">${playersHTML}</div>
+            ${me.isHost ? `<button id="playAgainBtn" class="btn green">Play Again</button>` : '<p class="subtitle">Waiting for host to start a new game...</p>'}
         </div>
     `;
 }
@@ -214,6 +229,7 @@ async function handleCreateGame() {
         votes: {},
         round: 1,
         roundChoices: {},
+        turnOrder: [],
         createdAt: new Date(),
     };
 
@@ -297,14 +313,27 @@ document.getElementById('lobby-screen').addEventListener('click', async (e) => {
         
         const gameData = gameSnap.data();
         const secretWord = getRandomWord();
-        const imposterIndex = 1 + Math.floor(Math.random() * (gameData.players.length - 1));
-        const playersWithRoles = gameData.players.map((p, i) => ({...p, role: i === imposterIndex ? 'imposter' : 'crew'}));
+        
+        // --- CHANGE: Shuffle players for random turn order ---
+        const shuffledPlayers = shuffleArray([...gameData.players]);
+        const turnOrder = shuffledPlayers.map(p => p.uid);
+
+        // --- CHANGE: Ensure imposter is not the first player in the random order ---
+        const firstPlayerUid = turnOrder[0];
+        const eligibleImposters = shuffledPlayers.filter(p => p.uid !== firstPlayerUid);
+        const imposter = eligibleImposters[Math.floor(Math.random() * eligibleImposters.length)];
+        
+        const playersWithRoles = gameData.players.map(p => ({
+            ...p,
+            role: p.uid === imposter.uid ? 'imposter' : 'crew'
+        }));
 
         await updateDoc(gameRef, {
             status: 'playing',
             players: playersWithRoles,
             secretWord: secretWord,
-            currentPlayerUid: gameData.players[0].uid,
+            currentPlayerUid: firstPlayerUid, // Start with the first random player
+            turnOrder: turnOrder, // Save the random turn order
             round: 1,
             roundChoices: {},
             words: [],
@@ -326,8 +355,9 @@ document.getElementById('game-screen').addEventListener('click', async (e) => {
         
         const me = gameData.players.find(p => p.uid === currentUserId);
         const newWords = [...gameData.words, { uid: currentUserId, name: me.name, word: wordInput, round: gameData.round }];
-        const myIndex = gameData.players.findIndex(p => p.uid === currentUserId);
-        const nextPlayerUid = gameData.players[(myIndex + 1) % gameData.players.length].uid;
+        
+        const myIndexInTurnOrder = gameData.turnOrder.indexOf(currentUserId);
+        const nextPlayerUid = gameData.turnOrder[(myIndexInTurnOrder + 1) % gameData.turnOrder.length];
         
         const wordsThisRound = newWords.filter(w => w.round === gameData.round);
         const newStatus = wordsThisRound.length === gameData.players.length ? 'round-end' : 'playing';
@@ -347,7 +377,9 @@ document.getElementById('game-screen').addEventListener('click', async (e) => {
             if (votes > continues) {
                 await updateDoc(gameRef, { status: 'voting' });
             } else {
-                await updateDoc(gameRef, { status: 'playing', roundChoices: {}, currentPlayerUid: gameData.players[0].uid });
+                // Start next round with a new random turn order
+                const newTurnOrder = shuffleArray([...gameData.turnOrder]);
+                await updateDoc(gameRef, { status: 'playing', roundChoices: {}, currentPlayerUid: newTurnOrder[0], turnOrder: newTurnOrder });
             }
         }
     }
@@ -376,12 +408,17 @@ document.getElementById('game-screen').addEventListener('click', async (e) => {
     // Play Again
     if (e.target.id === 'playAgainBtn') {
          const newSecretWord = getRandomWord();
-         const imposterIndex = 1 + Math.floor(Math.random() * (gameData.players.length - 1));
-         const newPlayers = gameData.players.map((p, i) => ({...p, role: i === imposterIndex ? 'imposter' : 'crew'}));
+         const shuffledPlayers = shuffleArray([...gameData.players]);
+         const newTurnOrder = shuffledPlayers.map(p => p.uid);
+         const firstPlayerUid = newTurnOrder[0];
+         const eligibleImposters = shuffledPlayers.filter(p => p.uid !== firstPlayerUid);
+         const imposter = eligibleImposters[Math.floor(Math.random() * eligibleImposters.length)];
+         const newPlayers = gameData.players.map(p => ({...p, role: p.uid === imposter.uid ? 'imposter' : 'crew'}));
+         
          await updateDoc(gameRef, {
              status: 'playing', secretWord: newSecretWord, players: newPlayers,
              words: [], votes: {}, winner: null, votedOutUid: null, round: 1, roundChoices: {},
-             currentPlayerUid: gameData.players[0].uid,
+             currentPlayerUid: firstPlayerUid, turnOrder: newTurnOrder,
          });
     }
 });
