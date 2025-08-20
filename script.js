@@ -28,7 +28,11 @@ const gamesCollectionPath = `artifacts/${appId}/public/data/games`;
 let currentUserId = null;
 let currentGameId = null;
 let gameUnsubscribe = null;
-let countdownInterval = null;
+let localPlayerList = [];
+
+// --- Sound Effects ---
+const winSound = new Tone.Synth({ oscillator: { type: "sine" } }).toDestination();
+const loseSound = new Tone.Synth({ oscillator: { type: "triangle" } }).toDestination();
 
 // --- UI Elements ---
 const screens = {
@@ -63,11 +67,18 @@ function showScreen(screenName) {
         screens[screenName].classList.remove('hidden');
     }
     document.querySelectorAll('.confetti').forEach(c => c.remove());
-    if (countdownInterval) clearInterval(countdownInterval);
 }
 
 // --- Celebration ---
-function triggerCelebration(winner) {
+function triggerCelebration(winner, me) {
+    if (me.role === 'imposter' && winner === 'Imposter' || me.role === 'crew' && winner === 'Crew') {
+        winSound.triggerAttackRelease("C5", "8n", Tone.now());
+        winSound.triggerAttackRelease("E5", "8n", Tone.now() + 0.2);
+        winSound.triggerAttackRelease("G5", "8n", Tone.now() + 0.4);
+    } else {
+        loseSound.triggerAttackRelease("G2", "4n", Tone.now());
+    }
+
     const colors = winner === 'Crew' ? ['#50c878', '#a3d9a5', '#ffffff'] : ['#e94560', '#f08080', '#ffffff'];
     for (let i = 0; i < 100; i++) {
         const confetti = document.createElement('div');
@@ -81,8 +92,6 @@ function triggerCelebration(winner) {
 
 // --- Render Functions ---
 function renderLobby(gameData) {
-    document.getElementById('lobby-content').classList.remove('hidden');
-    document.getElementById('countdown-container').classList.add('hidden');
     document.getElementById('lobbyGameId').textContent = gameData.gameId;
     document.getElementById('gameScreenId').textContent = gameData.gameId;
     document.getElementById('playerCount').textContent = gameData.players.length;
@@ -110,23 +119,6 @@ function renderLobby(gameData) {
     }
 }
 
-function renderStarting(gameData) {
-    document.getElementById('lobby-content').classList.add('hidden');
-    document.getElementById('countdown-container').classList.remove('hidden');
-    const timerEl = document.getElementById('countdown-timer');
-
-    if (countdownInterval) clearInterval(countdownInterval);
-    countdownInterval = setInterval(() => {
-        const remaining = Math.ceil((gameData.startTime.toDate() - new Date()) / 1000);
-        if (timerEl) {
-            timerEl.textContent = remaining > 0 ? remaining : 0;
-        }
-        if (remaining <= 0) {
-            clearInterval(countdownInterval);
-        }
-    }, 1000);
-}
-
 function renderGame(gameData) {
     const me = gameData.players.find(p => p.uid === currentUserId);
     const isMyTurn = gameData.currentPlayerUid === currentUserId;
@@ -137,11 +129,11 @@ function renderGame(gameData) {
     let playersHTML = orderedPlayers.map(player => {
         const wordsForPlayer = gameData.words.filter(w => w.uid === player.uid).map(w => w.word).join(', ');
         const isCurrentPlayer = gameData.currentPlayerUid === player.uid;
-        const canVote = player.uid !== currentUserId && gameData.status === 'voting' && !(gameData.votes && gameData.votes[currentUserId]);
+        const canVote = player.uid !== currentUserId && !player.disconnected && gameData.status === 'voting' && !(gameData.votes && gameData.votes[currentUserId]);
         
         return `
-            <div class="player-card ${isCurrentPlayer && gameData.status === 'playing' ? 'current-player' : ''}">
-                <p class="name">${player.name}</p>
+            <div class="player-card ${isCurrentPlayer && gameData.status === 'playing' ? 'current-player' : ''} ${player.disconnected ? 'disconnected' : ''}">
+                <p class="name">${player.name} ${player.disconnected ? '(Left)' : ''}</p>
                 <p class="word">${wordsForPlayer || '...'}</p>
                 ${canVote ? `<button data-vote-uid="${player.uid}" class="btn blue vote-btn">Vote</button>` : ''}
             </div>
@@ -190,8 +182,8 @@ function renderRoundEnd(gameData) {
     let playersHTML = orderedPlayers.map(player => {
         const wordsForPlayer = gameData.words.filter(w => w.uid === player.uid).map(w => w.word).join(', ');
         return `
-            <div class="player-card">
-                <p class="name">${player.name}</p>
+            <div class="player-card ${player.disconnected ? 'disconnected' : ''}">
+                <p class="name">${player.name} ${player.disconnected ? '(Left)' : ''}</p>
                 <p class="word">${wordsForPlayer || '...'}</p>
             </div>
         `;
@@ -219,10 +211,10 @@ function renderRoundEnd(gameData) {
 }
 
 function renderFinished(gameData) {
-    triggerCelebration(gameData.winner);
-    const gameContent = document.getElementById('game-content');
     const imposter = gameData.players.find(p => p.role === 'imposter');
     const me = gameData.players.find(p => p.uid === currentUserId);
+    triggerCelebration(gameData.winner, me);
+    const gameContent = document.getElementById('game-content');
 
     let playersHTML = gameData.players.map(player => {
         const wordsForPlayer = gameData.words.filter(w => w.uid === player.uid).map(w => w.word).join(', ');
@@ -231,7 +223,7 @@ function renderFinished(gameData) {
         const voteText = votedForPlayer ? `Voted for ${votedForPlayer.name}` : 'No vote';
 
         return `
-            <div class="player-card">
+            <div class="player-card ${player.disconnected ? 'disconnected' : ''}">
                 <div style="display:flex; justify-content: space-between; align-items: center;">
                     <p class="name">${player.name}</p>
                     <span class="role-tag ${player.role === 'imposter' ? 'imposter' : 'crew'}">${player.role.toUpperCase()}</span>
@@ -254,22 +246,6 @@ function renderFinished(gameData) {
     `;
 }
 
-function renderChat(gameData) {
-    const chatMessages = document.getElementById('chat-messages');
-    chatMessages.innerHTML = '';
-    (gameData.chatMessages || []).forEach(msg => {
-        const msgDiv = document.createElement('div');
-        msgDiv.className = `chat-message ${msg.uid === currentUserId ? 'me' : ''}`;
-        msgDiv.innerHTML = `
-            <p class="name">${msg.name}</p>
-            <p class="text">${msg.text}</p>
-        `;
-        chatMessages.appendChild(msgDiv);
-    });
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-
 // --- Game Logic Handlers ---
 async function handleCreateGame() {
     const playerName = document.getElementById('playerName').value.trim();
@@ -288,7 +264,6 @@ async function handleCreateGame() {
         round: 1,
         roundChoices: {},
         turnOrder: [],
-        chatMessages: [],
         createdAt: new Date(),
     };
 
@@ -318,6 +293,7 @@ async function handleJoinGame() {
 
 async function tallyVotes(gameData) {
     const gameRef = doc(db, gamesCollectionPath, currentGameId);
+    const activePlayers = gameData.players.filter(p => !p.disconnected);
     const voteCounts = {};
     Object.values(gameData.votes).forEach(uid => { voteCounts[uid] = (voteCounts[uid] || 0) + 1; });
 
@@ -335,7 +311,7 @@ async function tallyVotes(gameData) {
     const imposter = gameData.players.find(p => p.role === 'imposter');
     let winner, votedOutUid = null, outcomeMessage = '';
 
-    if (candidates.length > 1) {
+    if (candidates.length > 1 || candidates.length === 0) {
         winner = 'Imposter';
         votedOutUid = null;
         outcomeMessage = "It's a tie! The crew couldn't decide.";
@@ -362,33 +338,30 @@ function joinGame(gameId) {
         if (doc.exists()) {
             const gameData = doc.data();
             const me = gameData.players.find(p => p.uid === currentUserId);
+            const activePlayers = gameData.players.filter(p => !p.disconnected);
 
-            if (gameData.status !== 'lobby' && gameData.initialPlayerCount && gameData.players.length < gameData.initialPlayerCount) {
-                if (me?.isHost) {
-                    await updateDoc(doc(db, gamesCollectionPath, gameId), {
-                        status: 'finished',
-                        winner: 'Nobody',
-                        outcomeMessage: 'A player disconnected. The game has ended.'
-                    });
+            // Host handles disconnects
+            if (me?.isHost && localPlayerList.length > gameData.players.length) {
+                const disconnectedPlayer = localPlayerList.find(p => !gameData.players.some(gp => gp.uid === p.uid));
+                if (disconnectedPlayer) {
+                    const playerRef = gameData.players.find(p => p.uid === disconnectedPlayer.uid);
+                    if (playerRef && !playerRef.disconnected) {
+                        playerRef.disconnected = true;
+                        await updateDoc(doc(db, gamesCollectionPath, gameId), { players: gameData.players });
+                    }
                 }
-                return;
             }
-            
-            if (gameData.status === 'voting' && Object.keys(gameData.votes).length === gameData.players.length) {
+            localPlayerList = gameData.players;
+
+            if (gameData.status === 'voting' && Object.keys(gameData.votes).length === activePlayers.length) {
                 if (me?.isHost) {
                     await tallyVotes(gameData);
                 }
                 return;
             }
 
-            // Always render chat if in game
-            if (gameData.status !== 'lobby') {
-                renderChat(gameData);
-            }
-
             switch (gameData.status) {
                 case 'lobby': renderLobby(gameData); showScreen('lobby'); break;
-                case 'starting': renderStarting(gameData); showScreen('lobby'); break;
                 case 'playing':
                 case 'voting': renderGame(gameData); showScreen('game'); break;
                 case 'round-end': renderRoundEnd(gameData); showScreen('game'); break;
@@ -410,14 +383,25 @@ function leaveGame() {
 
 async function advanceTurn(gameData) {
     const gameRef = doc(db, gamesCollectionPath, currentGameId);
+    const activePlayers = gameData.players.filter(p => !p.disconnected);
     
     const myIndexInTurnOrder = gameData.turnOrder.indexOf(gameData.currentPlayerUid);
     const wordsThisRound = gameData.words.filter(w => w.round === gameData.round);
 
-    if (wordsThisRound.length === gameData.players.length) {
+    if (wordsThisRound.length === activePlayers.length) {
         await updateDoc(gameRef, { status: 'round-end' });
     } else {
-        const nextPlayerUid = gameData.turnOrder[(myIndexInTurnOrder + 1) % gameData.turnOrder.length];
+        let nextPlayerIndex = (myIndexInTurnOrder + 1) % gameData.turnOrder.length;
+        let nextPlayerUid = gameData.turnOrder[nextPlayerIndex];
+        let nextPlayer = gameData.players.find(p => p.uid === nextPlayerUid);
+
+        // Skip disconnected players
+        while(nextPlayer.disconnected) {
+            nextPlayerIndex = (nextPlayerIndex + 1) % gameData.turnOrder.length;
+            nextPlayerUid = gameData.turnOrder[nextPlayerIndex];
+            nextPlayer = gameData.players.find(p => p.uid === nextPlayerUid);
+        }
+        
         await updateDoc(gameRef, { 
             currentPlayerUid: nextPlayerUid, 
         });
@@ -435,43 +419,35 @@ document.getElementById('copyGameIdBtn').addEventListener('click', () => {
 document.getElementById('lobby-screen').addEventListener('click', async (e) => {
     if (e.target.id === 'startGameBtn') {
         const gameRef = doc(db, gamesCollectionPath, currentGameId);
+        const gameSnap = await getDoc(gameRef);
+        if (!gameSnap.exists()) return;
+        
+        const gameData = gameSnap.data();
+        const secretWord = getRandomWord();
+        
+        const shuffledPlayers = shuffleArray([...gameData.players]);
+        const turnOrder = shuffledPlayers.map(p => p.uid);
+
+        const firstPlayerUid = turnOrder[0];
+        const eligibleImposters = shuffledPlayers.filter(p => p.uid !== firstPlayerUid);
+        const imposter = eligibleImposters[Math.floor(Math.random() * eligibleImposters.length)];
+        
+        const playersWithRoles = gameData.players.map(p => ({
+            ...p,
+            role: p.uid === imposter.uid ? 'imposter' : 'crew'
+        }));
+
         await updateDoc(gameRef, {
-            status: 'starting',
-            startTime: new Date(Date.now() + 10000)
+            status: 'playing',
+            players: playersWithRoles,
+            secretWord: secretWord,
+            currentPlayerUid: firstPlayerUid, 
+            turnOrder: turnOrder,
+            round: 1,
+            roundChoices: {},
+            words: [],
+            votes: {},
         });
-
-        setTimeout(async () => {
-            const gameSnap = await getDoc(gameRef);
-            if (!gameSnap.exists() || gameSnap.data().status !== 'starting') return;
-            
-            const gameData = gameSnap.data();
-            const secretWord = getRandomWord();
-            
-            const shuffledPlayers = shuffleArray([...gameData.players]);
-            const turnOrder = shuffledPlayers.map(p => p.uid);
-
-            const firstPlayerUid = turnOrder[0];
-            const eligibleImposters = shuffledPlayers.filter(p => p.uid !== firstPlayerUid);
-            const imposter = eligibleImposters[Math.floor(Math.random() * eligibleImposters.length)];
-            
-            const playersWithRoles = gameData.players.map(p => ({
-                ...p,
-                role: p.uid === imposter.uid ? 'imposter' : 'crew'
-            }));
-
-            await updateDoc(gameRef, {
-                status: 'playing',
-                players: playersWithRoles,
-                secretWord: secretWord,
-                currentPlayerUid: firstPlayerUid, 
-                turnOrder: turnOrder,
-                round: 1,
-                roundChoices: {},
-                words: [],
-                votes: {},
-                initialPlayerCount: gameData.players.length
-            });
-        }, 10000);
     }
 });
 
@@ -480,6 +456,7 @@ document.getElementById('game-screen').addEventListener('click', async (e) => {
     const gameSnap = await getDoc(gameRef);
     if (!gameSnap.exists()) return;
     const gameData = gameSnap.data();
+    const activePlayers = gameData.players.filter(p => !p.disconnected);
 
     // Submit Word
     if (e.target.id === 'submitWordBtn') {
@@ -499,9 +476,9 @@ document.getElementById('game-screen').addEventListener('click', async (e) => {
         const newRoundChoices = { ...gameData.roundChoices, [currentUserId]: choice };
         await updateDoc(gameRef, { roundChoices: newRoundChoices });
 
-        if (Object.keys(newRoundChoices).length === gameData.players.length) {
+        if (Object.keys(newRoundChoices).length === activePlayers.length) {
             const votes = Object.values(newRoundChoices).filter(c => c === 'vote').length;
-            const continues = gameData.players.length - votes;
+            const continues = activePlayers.length - votes;
             if (votes > continues) {
                 await updateDoc(gameRef, { status: 'voting' });
             } else {
@@ -533,39 +510,14 @@ document.getElementById('game-screen').addEventListener('click', async (e) => {
          const firstPlayerUid = newTurnOrder[0];
          const eligibleImposters = shuffledPlayers.filter(p => p.uid !== firstPlayerUid);
          const imposter = eligibleImposters[Math.floor(Math.random() * eligibleImposters.length)];
-         const newPlayers = gameData.players.map(p => ({...p, role: p.uid === imposter.uid ? 'imposter' : 'crew'}));
+         const newPlayers = gameData.players.map(p => ({...p, role: p.uid === imposter.uid ? 'imposter' : 'crew', disconnected: false}));
          
          await updateDoc(gameRef, {
              status: 'playing', secretWord: newSecretWord, players: newPlayers,
              words: [], votes: {}, winner: null, votedOutUid: null, round: 1, roundChoices: {},
-             currentPlayerUid: firstPlayerUid, turnOrder: newTurnOrder, initialPlayerCount: newPlayers.length, chatMessages: []
+             currentPlayerUid: firstPlayerUid, turnOrder: newTurnOrder
          });
     }
-});
-
-document.getElementById('send-chat-btn').addEventListener('click', async () => {
-    const chatInput = document.getElementById('chat-input');
-    const text = chatInput.value.trim();
-    if (!text) return;
-
-    const gameRef = doc(db, gamesCollectionPath, currentGameId);
-    const gameSnap = await getDoc(gameRef);
-    if (!gameSnap.exists()) return;
-
-    const gameData = gameSnap.data();
-    const me = gameData.players.find(p => p.uid === currentUserId);
-
-    const newMessage = {
-        uid: currentUserId,
-        name: me.name,
-        text: text,
-        timestamp: new Date()
-    };
-
-    await updateDoc(gameRef, {
-        chatMessages: [...(gameData.chatMessages || []), newMessage]
-    });
-    chatInput.value = '';
 });
 
 // --- Authentication ---
