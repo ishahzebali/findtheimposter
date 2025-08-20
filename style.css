@@ -215,14 +215,16 @@ label { display: block; margin-bottom: 10px; font-size: 0.9rem; }
 .game-input-area .input-group {
     display: flex;
     gap: 10px;
-    margin-top: 10px;
+    align-items: stretch;
 }
 .game-input-area .input-group input {
-    flex-grow: 1; /* Input takes available space */
+    flex-grow: 1;
+    margin: 0;
 }
 .game-input-area .input-group .btn {
-    flex-grow: 2; /* Button is twice as wide as input grows */
-    width: auto; /* Override 100% width */
+    width: auto;
+    flex-shrink: 0;
+    padding: 0 25px;
 }
 .game-input-area input {
     font-family: system-ui, sans-serif;
@@ -273,6 +275,27 @@ label { display: block; margin-bottom: 10px; font-size: 0.9rem; }
     text-shadow: 4px 4px 0 #0f3460;
 }
 
+/* --- Role Reveal Screen --- */
+#role-reveal-screen .reveal-content {
+    animation: slideIn 1s ease-out forwards;
+}
+.reveal-role {
+    font-size: 3rem;
+    text-shadow: 5px 5px 0 #000;
+    margin-bottom: 20px;
+}
+.reveal-role.crew { color: #50c878; }
+.reveal-role.imposter { color: #e94560; }
+.reveal-word {
+    font-size: 1.5rem;
+    color: #fff;
+}
+@keyframes slideIn {
+    from { transform: translateY(100px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+
 /* --- Media Queries for Responsiveness --- */
 @media (min-width: 768px) {
     body {
@@ -293,4 +316,6 @@ label { display: block; margin-bottom: 10px; font-size: 0.9rem; }
     .player-cards-grid {
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     }
+    .reveal-role { font-size: 5rem; }
+    .reveal-word { font-size: 2rem; }
 }

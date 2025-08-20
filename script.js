@@ -42,6 +42,7 @@ const screens = {
     home: document.getElementById('home-screen'),
     lobby: document.getElementById('lobby-screen'),
     game: document.getElementById('game-screen'),
+    'role-reveal': document.getElementById('role-reveal-screen'),
 };
 
 // --- Word List ---
@@ -150,6 +151,26 @@ function renderStarting(gameData) {
         }
     }, 1000);
 }
+
+function renderRoleReveal(gameData) {
+    const me = gameData.players.find(p => p.uid === currentUserId);
+    const roleEl = document.getElementById('reveal-role');
+    const wordEl = document.getElementById('reveal-word');
+
+    roleEl.textContent = me.role.toUpperCase();
+    roleEl.className = `reveal-role ${me.role}`; // for styling
+    wordEl.textContent = me.role === 'imposter' ? '???' : gameData.secretWord;
+
+    showScreen('role-reveal');
+
+    setTimeout(() => {
+        if (currentGameId) { // Ensure we are still in a game
+            renderGame(gameData);
+            showScreen('game');
+        }
+    }, 4000); // Show for 4 seconds
+}
+
 
 function renderGame(gameData) {
     const me = gameData.players.find(p => p.uid === currentUserId);
@@ -396,7 +417,14 @@ function joinGame(gameId) {
             switch (gameData.status) {
                 case 'lobby': renderLobby(gameData); showScreen('lobby'); break;
                 case 'starting': renderStarting(gameData); showScreen('lobby'); break;
-                case 'playing':
+                case 'playing': 
+                    if (!gameData.revealedRoles || !gameData.revealedRoles[currentUserId]) {
+                        renderRoleReveal(gameData);
+                    } else {
+                        renderGame(gameData);
+                        showScreen('game');
+                    }
+                    break;
                 case 'voting': renderGame(gameData); showScreen('game'); break;
                 case 'round-end': renderRoundEnd(gameData); showScreen('game'); break;
                 case 'finished': renderFinished(gameData); showScreen('game'); break;
@@ -486,6 +514,7 @@ document.getElementById('lobby-screen').addEventListener('click', async (e) => {
                 roundChoices: {},
                 words: [],
                 votes: {},
+                revealedRoles: {}
             });
         }, 10000);
     }
@@ -555,7 +584,7 @@ document.getElementById('game-screen').addEventListener('click', async (e) => {
          await updateDoc(gameRef, {
              status: 'playing', secretWord: newSecretWord, players: newPlayers,
              words: [], votes: {}, winner: null, votedOutUid: null, round: 1, roundChoices: {},
-             currentPlayerUid: firstPlayerUid, turnOrder: newTurnOrder
+             currentPlayerUid: firstPlayerUid, turnOrder: newTurnOrder, revealedRoles: {}
          });
     }
 });
