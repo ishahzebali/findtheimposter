@@ -212,6 +212,18 @@ label { display: block; margin-bottom: 10px; font-size: 0.9rem; }
     color: #333;
     margin-bottom: 15px;
 }
+.game-input-area .input-group {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+.game-input-area .input-group input {
+    flex-grow: 1; /* Input takes available space */
+}
+.game-input-area .input-group .btn {
+    flex-grow: 2; /* Button is twice as wide as input grows */
+    width: auto; /* Override 100% width */
+}
 .game-input-area input {
     font-family: system-ui, sans-serif;
     text-transform: none;
@@ -252,6 +264,13 @@ label { display: block; margin-bottom: 10px; font-size: 0.9rem; }
 @keyframes fall {
     0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
     100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
+}
+
+/* --- Countdown Timer --- */
+.countdown {
+    font-size: 4rem;
+    color: #e94560;
+    text-shadow: 4px 4px 0 #0f3460;
 }
 
 /* --- Media Queries for Responsiveness --- */

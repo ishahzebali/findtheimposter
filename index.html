@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Imposter Game</title>
+    <title>Word Sleuth</title>
     <!-- Favicon -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🕵️</text></svg>">
     <!-- Google Fonts for the retro game look -->
@@ -26,7 +26,7 @@
     <!-- Home Screen (Create/Join Game) -->
     <div id="home-screen" class="screen hidden">
         <div class="container">
-            <h1>Imposter</h1>
+            <h1>Word Sleuth</h1>
             <p class="subtitle">A word game of deception</p>
             
             <div class="card">
@@ -50,25 +50,32 @@
     <!-- Lobby Screen -->
     <div id="lobby-screen" class="screen hidden">
         <div class="container">
-            <h1>Lobby</h1>
-            <p class="subtitle">Share the Game ID with your friends!</p>
-            <div class="game-id-display">
-                <p id="lobbyGameId"></p>
-                <button id="copyGameIdBtn" title="Copy Game ID">
-                    <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#FFFFFF"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
-                </button>
+            <div id="lobby-content">
+                <h1>Lobby</h1>
+                <p class="subtitle">Share the Game ID with your friends!</p>
+                <div class="game-id-display">
+                    <p id="lobbyGameId"></p>
+                    <button id="copyGameIdBtn" title="Copy Game ID">
+                        <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#FFFFFF"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+                    </button>
+                </div>
+                <h2>Players (<span id="playerCount">0</span>)</h2>
+                <div id="playerList" class="player-list"></div>
+                <button id="startGameBtn" class="btn green">Start Game</button>
+                <p id="waitingForHost" class="hidden">Waiting for the host to start...</p>
             </div>
-            <h2>Players (<span id="playerCount">0</span>)</h2>
-            <div id="playerList" class="player-list"></div>
-            <button id="startGameBtn" class="btn green">Start Game</button>
-            <p id="waitingForHost" class="hidden">Waiting for the host to start...</p>
+            <!-- Countdown Timer -->
+            <div id="countdown-container" class="hidden">
+                <h2 class="subtitle">Game Starting In...</h2>
+                <p id="countdown-timer" class="countdown">10</p>
+            </div>
         </div>
     </div>
 
     <!-- Game Screen -->
     <div id="game-screen" class="screen wide hidden">
         <div class="game-header">
-            <h1>Imposter</h1>
+            <h1>Word Sleuth</h1>
             <div class="game-id-tag">
                 <p>Game ID</p>
                 <span id="gameScreenId"></span>

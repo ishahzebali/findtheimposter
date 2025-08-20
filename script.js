@@ -30,6 +30,7 @@ let currentGameId = null;
 let gameUnsubscribe = null;
 let localPlayerList = [];
 let audioStarted = false;
+let countdownInterval = null;
 
 // --- Sound Effects ---
 const winSound = new Tone.Synth({ oscillator: { type: "sine" } }).toDestination();
@@ -68,6 +69,7 @@ function showScreen(screenName) {
         screens[screenName].classList.remove('hidden');
     }
     document.querySelectorAll('.confetti').forEach(c => c.remove());
+    if (countdownInterval) clearInterval(countdownInterval);
 }
 
 // --- Sound & Celebration ---
@@ -80,7 +82,7 @@ async function startAudio() {
 }
 
 async function triggerCelebration(winner, me) {
-    await startAudio(); // Ensure audio is running before playing a sound
+    await startAudio();
 
     if (me.role === 'imposter' && winner === 'Imposter' || me.role === 'crew' && winner === 'Crew') {
         winSound.triggerAttackRelease("C5", "8n", Tone.now());
@@ -103,6 +105,8 @@ async function triggerCelebration(winner, me) {
 
 // --- Render Functions ---
 function renderLobby(gameData) {
+    document.getElementById('lobby-content').classList.remove('hidden');
+    document.getElementById('countdown-container').classList.add('hidden');
     document.getElementById('lobbyGameId').textContent = gameData.gameId;
     document.getElementById('gameScreenId').textContent = gameData.gameId;
     document.getElementById('playerCount').textContent = gameData.players.length;
@@ -128,6 +132,23 @@ function renderLobby(gameData) {
         startGameBtn.classList.add('hidden');
         waitingForHost.classList.remove('hidden');
     }
+}
+
+function renderStarting(gameData) {
+    document.getElementById('lobby-content').classList.add('hidden');
+    document.getElementById('countdown-container').classList.remove('hidden');
+    const timerEl = document.getElementById('countdown-timer');
+
+    if (countdownInterval) clearInterval(countdownInterval);
+    countdownInterval = setInterval(() => {
+        const remaining = Math.ceil((gameData.startTime.toDate() - new Date()) / 1000);
+        if (timerEl) {
+            timerEl.textContent = remaining > 0 ? remaining : 0;
+        }
+        if (remaining <= 0) {
+            clearInterval(countdownInterval);
+        }
+    }, 1000);
 }
 
 function renderGame(gameData) {
@@ -156,7 +177,7 @@ function renderGame(gameData) {
         turnHTML = `
             <div class="game-input-area">
                 <h3>Round ${gameData.round}: It's your turn!</h3>
-                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                <div class="input-group">
                     <input id="wordInput" type="text" placeholder="Enter your word...">
                     <button id="submitWordBtn" class="btn blue">Submit</button>
                 </div>
@@ -374,6 +395,7 @@ function joinGame(gameId) {
 
             switch (gameData.status) {
                 case 'lobby': renderLobby(gameData); showScreen('lobby'); break;
+                case 'starting': renderStarting(gameData); showScreen('lobby'); break;
                 case 'playing':
                 case 'voting': renderGame(gameData); showScreen('game'); break;
                 case 'round-end': renderRoundEnd(gameData); showScreen('game'); break;
@@ -430,35 +452,42 @@ document.getElementById('copyGameIdBtn').addEventListener('click', () => {
 document.getElementById('lobby-screen').addEventListener('click', async (e) => {
     if (e.target.id === 'startGameBtn') {
         const gameRef = doc(db, gamesCollectionPath, currentGameId);
-        const gameSnap = await getDoc(gameRef);
-        if (!gameSnap.exists()) return;
-        
-        const gameData = gameSnap.data();
-        const secretWord = getRandomWord();
-        
-        const shuffledPlayers = shuffleArray([...gameData.players]);
-        const turnOrder = shuffledPlayers.map(p => p.uid);
-
-        const firstPlayerUid = turnOrder[0];
-        const eligibleImposters = shuffledPlayers.filter(p => p.uid !== firstPlayerUid);
-        const imposter = eligibleImposters[Math.floor(Math.random() * eligibleImposters.length)];
-        
-        const playersWithRoles = gameData.players.map(p => ({
-            ...p,
-            role: p.uid === imposter.uid ? 'imposter' : 'crew'
-        }));
-
         await updateDoc(gameRef, {
-            status: 'playing',
-            players: playersWithRoles,
-            secretWord: secretWord,
-            currentPlayerUid: firstPlayerUid, 
-            turnOrder: turnOrder,
-            round: 1,
-            roundChoices: {},
-            words: [],
-            votes: {},
+            status: 'starting',
+            startTime: new Date(Date.now() + 10000)
         });
+
+        setTimeout(async () => {
+            const gameSnap = await getDoc(gameRef);
+            if (!gameSnap.exists() || gameSnap.data().status !== 'starting') return;
+            
+            const gameData = gameSnap.data();
+            const secretWord = getRandomWord();
+            
+            const shuffledPlayers = shuffleArray([...gameData.players]);
+            const turnOrder = shuffledPlayers.map(p => p.uid);
+
+            const firstPlayerUid = turnOrder[0];
+            const eligibleImposters = shuffledPlayers.filter(p => p.uid !== firstPlayerUid);
+            const imposter = eligibleImposters[Math.floor(Math.random() * eligibleImposters.length)];
+            
+            const playersWithRoles = gameData.players.map(p => ({
+                ...p,
+                role: p.uid === imposter.uid ? 'imposter' : 'crew'
+            }));
+
+            await updateDoc(gameRef, {
+                status: 'playing',
+                players: playersWithRoles,
+                secretWord: secretWord,
+                currentPlayerUid: firstPlayerUid, 
+                turnOrder: turnOrder,
+                round: 1,
+                roundChoices: {},
+                words: [],
+                votes: {},
+            });
+        }, 10000);
     }
 });
 
