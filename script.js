@@ -152,7 +152,7 @@ function renderStarting(gameData) {
     }, 1000);
 }
 
-async function renderRoleReveal(gameData) {
+function renderRoleReveal(gameData) {
     const me = gameData.players.find(p => p.uid === currentUserId);
     const roleEl = document.getElementById('reveal-role');
     const wordEl = document.getElementById('reveal-word');
@@ -163,13 +163,10 @@ async function renderRoleReveal(gameData) {
 
     showScreen('role-reveal');
     
-    const gameRef = doc(db, gamesCollectionPath, currentGameId);
-    await updateDoc(gameRef, { [`revealedRoles.${currentUserId}`]: true });
-
-    setTimeout(() => {
-        if (currentGameId) { // Ensure we are still in a game
-            renderGame(gameData);
-            showScreen('game');
+    setTimeout(async () => {
+        if (currentGameId) {
+            const gameRef = doc(db, gamesCollectionPath, currentGameId);
+            await updateDoc(gameRef, { [`revealedRoles.${currentUserId}`]: true });
         }
     }, 4000);
 }
@@ -398,7 +395,6 @@ function joinGame(gameId) {
             const me = gameData.players.find(p => p.uid === currentUserId);
             const activePlayers = gameData.players.filter(p => !p.disconnected);
 
-            // --- CHANGE: Clear countdown interval if not in 'starting' state ---
             if (gameData.status !== 'starting' && countdownInterval) {
                 clearInterval(countdownInterval);
                 countdownInterval = null;
@@ -495,7 +491,6 @@ document.getElementById('lobby-screen').addEventListener('click', async (e) => {
             startTime: new Date(Date.now() + 10000)
         });
 
-        // --- CHANGE: Host now sets a timeout to transition state ---
         setTimeout(async () => {
             const gameSnap = await getDoc(gameRef);
             if (gameSnap.exists() && gameSnap.data().status === 'starting') {
