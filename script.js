@@ -184,7 +184,6 @@ function renderRoundEnd(gameData) {
 function renderFinished(gameData) {
     const gameContent = document.getElementById('game-content');
     const imposter = gameData.players.find(p => p.role === 'imposter');
-    const votedOutPlayer = gameData.players.find(p => p.uid === gameData.votedOutUid);
     const me = gameData.players.find(p => p.uid === currentUserId);
 
     let playersHTML = gameData.players.map(player => {
@@ -203,9 +202,9 @@ function renderFinished(gameData) {
     gameContent.innerHTML = `
         <div class="game-input-area">
             <h2 style="font-size: 2rem; color: #333;">${gameData.winner} Wins!</h2>
-            <p class="subtitle">The secret word was: <strong>${gameData.secretWord}</strong></p>
-            <p class="subtitle">The imposter was: <strong>${imposter.name}</strong></p>
-            <p class="subtitle">You voted out: <strong>${votedOutPlayer?.name || 'Nobody'}</strong></p>
+            <p class="subtitle" style="color: #333;">${gameData.outcomeMessage}</p>
+            <p class="subtitle" style="color: #333;">The secret word was: <strong>${gameData.secretWord}</strong></p>
+            <p class="subtitle" style="color: #333;">The imposter was: <strong>${imposter.name}</strong></p>
             <div class="player-cards-grid">${playersHTML}</div>
             ${me.isHost ? `<button id="playAgainBtn" class="btn green">Play Again</button>` : '<p class="subtitle">Waiting for host to start a new game...</p>'}
         </div>
@@ -314,11 +313,9 @@ document.getElementById('lobby-screen').addEventListener('click', async (e) => {
         const gameData = gameSnap.data();
         const secretWord = getRandomWord();
         
-        // --- CHANGE: Shuffle players for random turn order ---
         const shuffledPlayers = shuffleArray([...gameData.players]);
         const turnOrder = shuffledPlayers.map(p => p.uid);
 
-        // --- CHANGE: Ensure imposter is not the first player in the random order ---
         const firstPlayerUid = turnOrder[0];
         const eligibleImposters = shuffledPlayers.filter(p => p.uid !== firstPlayerUid);
         const imposter = eligibleImposters[Math.floor(Math.random() * eligibleImposters.length)];
@@ -332,8 +329,8 @@ document.getElementById('lobby-screen').addEventListener('click', async (e) => {
             status: 'playing',
             players: playersWithRoles,
             secretWord: secretWord,
-            currentPlayerUid: firstPlayerUid, // Start with the first random player
-            turnOrder: turnOrder, // Save the random turn order
+            currentPlayerUid: firstPlayerUid, 
+            turnOrder: turnOrder,
             round: 1,
             roundChoices: {},
             words: [],
@@ -377,7 +374,6 @@ document.getElementById('game-screen').addEventListener('click', async (e) => {
             if (votes > continues) {
                 await updateDoc(gameRef, { status: 'voting' });
             } else {
-                // Start next round with a new random turn order
                 const newTurnOrder = shuffleArray([...gameData.turnOrder]);
                 await updateDoc(gameRef, { status: 'playing', roundChoices: {}, currentPlayerUid: newTurnOrder[0], turnOrder: newTurnOrder });
             }
@@ -391,17 +387,43 @@ document.getElementById('game-screen').addEventListener('click', async (e) => {
         await updateDoc(gameRef, { votes: newVotes });
 
         if (Object.keys(newVotes).length === gameData.players.length) {
+            // --- CHANGE: Corrected vote tallying logic ---
             const voteCounts = {};
             Object.values(newVotes).forEach(uid => { voteCounts[uid] = (voteCounts[uid] || 0) + 1; });
-            let maxVotes = 0, votedOutUid = null;
+
+            let maxVotes = 0;
+            let candidates = [];
             for (const uid in voteCounts) {
                 if (voteCounts[uid] > maxVotes) {
                     maxVotes = voteCounts[uid];
-                    votedOutUid = uid;
+                    candidates = [uid]; // New leader
+                } else if (voteCounts[uid] === maxVotes) {
+                    candidates.push(uid); // It's a tie
                 }
             }
+
             const imposter = gameData.players.find(p => p.role === 'imposter');
-            await updateDoc(gameRef, { status: 'finished', winner: votedOutUid === imposter.uid ? 'Crew' : 'Imposter', votedOutUid });
+            let winner, votedOutUid = null, outcomeMessage = '';
+
+            if (candidates.length > 1) {
+                // It's a tie! Imposter wins because the crew failed to agree.
+                winner = 'Imposter';
+                votedOutUid = null;
+                outcomeMessage = "It's a tie! The crew couldn't decide.";
+            } else {
+                // One person was voted out.
+                votedOutUid = candidates[0];
+                winner = votedOutUid === imposter.uid ? 'Crew' : 'Imposter';
+                const votedOutPlayer = gameData.players.find(p => p.uid === votedOutUid);
+                outcomeMessage = `The crew voted out ${votedOutPlayer?.name || 'Nobody'}.`;
+            }
+
+            await updateDoc(gameRef, { 
+                status: 'finished', 
+                winner: winner, 
+                votedOutUid: votedOutUid,
+                outcomeMessage: outcomeMessage 
+            });
         }
     }
 
