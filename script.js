@@ -410,7 +410,7 @@ function joinGame(gameId) {
             const gameData = doc.data();
             const me = gameData.players.find(p => p.uid === currentUserId);
             const activePlayers = gameData.players.filter(p => !p.disconnected);
-
+            
             if (countdownInterval && gameData.status !== 'starting' && gameData.status !== 'voting') {
                 clearInterval(countdownInterval);
                 countdownInterval = null;
