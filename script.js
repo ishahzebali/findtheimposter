@@ -29,6 +29,7 @@ let currentUserId = null;
 let currentGameId = null;
 let gameUnsubscribe = null;
 let localPlayerList = [];
+let audioStarted = false;
 
 // --- Sound Effects ---
 const winSound = new Tone.Synth({ oscillator: { type: "sine" } }).toDestination();
@@ -69,8 +70,18 @@ function showScreen(screenName) {
     document.querySelectorAll('.confetti').forEach(c => c.remove());
 }
 
-// --- Celebration ---
-function triggerCelebration(winner, me) {
+// --- Sound & Celebration ---
+async function startAudio() {
+    if (!audioStarted) {
+        await Tone.start();
+        audioStarted = true;
+        console.log('Audio context started!');
+    }
+}
+
+async function triggerCelebration(winner, me) {
+    await startAudio(); // Ensure audio is running before playing a sound
+
     if (me.role === 'imposter' && winner === 'Imposter' || me.role === 'crew' && winner === 'Crew') {
         winSound.triggerAttackRelease("C5", "8n", Tone.now());
         winSound.triggerAttackRelease("E5", "8n", Tone.now() + 0.2);
@@ -248,6 +259,7 @@ function renderFinished(gameData) {
 
 // --- Game Logic Handlers ---
 async function handleCreateGame() {
+    await startAudio();
     const playerName = document.getElementById('playerName').value.trim();
     if (!playerName || !currentUserId) return;
 
@@ -272,6 +284,7 @@ async function handleCreateGame() {
 }
 
 async function handleJoinGame() {
+    await startAudio();
     const playerName = document.getElementById('playerName').value.trim();
     const gameId = document.getElementById('joinGameIdInput').value.trim().toUpperCase();
     if (!playerName || !gameId || !currentUserId) return;
@@ -340,7 +353,6 @@ function joinGame(gameId) {
             const me = gameData.players.find(p => p.uid === currentUserId);
             const activePlayers = gameData.players.filter(p => !p.disconnected);
 
-            // Host handles disconnects
             if (me?.isHost && localPlayerList.length > gameData.players.length) {
                 const disconnectedPlayer = localPlayerList.find(p => !gameData.players.some(gp => gp.uid === p.uid));
                 if (disconnectedPlayer) {
@@ -395,7 +407,6 @@ async function advanceTurn(gameData) {
         let nextPlayerUid = gameData.turnOrder[nextPlayerIndex];
         let nextPlayer = gameData.players.find(p => p.uid === nextPlayerUid);
 
-        // Skip disconnected players
         while(nextPlayer.disconnected) {
             nextPlayerIndex = (nextPlayerIndex + 1) % gameData.turnOrder.length;
             nextPlayerUid = gameData.turnOrder[nextPlayerIndex];
