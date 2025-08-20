@@ -70,7 +70,6 @@ function showScreen(screenName) {
         screens[screenName].classList.remove('hidden');
     }
     document.querySelectorAll('.confetti').forEach(c => c.remove());
-    if (countdownInterval) clearInterval(countdownInterval);
 }
 
 // --- Sound & Celebration ---
@@ -148,6 +147,7 @@ function renderStarting(gameData) {
         }
         if (remaining <= 0) {
             clearInterval(countdownInterval);
+            countdownInterval = null;
         }
     }, 1000);
 }
@@ -167,7 +167,7 @@ async function renderRoleReveal(gameData) {
     await updateDoc(gameRef, { [`revealedRoles.${currentUserId}`]: true });
 
     setTimeout(() => {
-        if (currentGameId) {
+        if (currentGameId) { // Ensure we are still in a game
             renderGame(gameData);
             showScreen('game');
         }
@@ -398,6 +398,12 @@ function joinGame(gameId) {
             const me = gameData.players.find(p => p.uid === currentUserId);
             const activePlayers = gameData.players.filter(p => !p.disconnected);
 
+            // --- CHANGE: Clear countdown interval if not in 'starting' state ---
+            if (gameData.status !== 'starting' && countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
+
             if (me?.isHost && localPlayerList.length > gameData.players.length) {
                 const disconnectedPlayer = localPlayerList.find(p => !gameData.players.some(gp => gp.uid === p.uid));
                 if (disconnectedPlayer) {
@@ -441,6 +447,7 @@ function joinGame(gameId) {
 
 function leaveGame() {
     if (gameUnsubscribe) gameUnsubscribe();
+    if (countdownInterval) clearInterval(countdownInterval);
     currentGameId = null;
     gameUnsubscribe = null;
     showScreen('home');
@@ -488,37 +495,38 @@ document.getElementById('lobby-screen').addEventListener('click', async (e) => {
             startTime: new Date(Date.now() + 10000)
         });
 
+        // --- CHANGE: Host now sets a timeout to transition state ---
         setTimeout(async () => {
             const gameSnap = await getDoc(gameRef);
-            if (!gameSnap.exists() || gameSnap.data().status !== 'starting') return;
-            
-            const gameData = gameSnap.data();
-            const secretWord = getRandomWord();
-            
-            const shuffledPlayers = shuffleArray([...gameData.players]);
-            const turnOrder = shuffledPlayers.map(p => p.uid);
+            if (gameSnap.exists() && gameSnap.data().status === 'starting') {
+                const gameData = gameSnap.data();
+                const secretWord = getRandomWord();
+                
+                const shuffledPlayers = shuffleArray([...gameData.players]);
+                const turnOrder = shuffledPlayers.map(p => p.uid);
 
-            const firstPlayerUid = turnOrder[0];
-            const eligibleImposters = shuffledPlayers.filter(p => p.uid !== firstPlayerUid);
-            const imposter = eligibleImposters[Math.floor(Math.random() * eligibleImposters.length)];
-            
-            const playersWithRoles = gameData.players.map(p => ({
-                ...p,
-                role: p.uid === imposter.uid ? 'imposter' : 'crew'
-            }));
+                const firstPlayerUid = turnOrder[0];
+                const eligibleImposters = shuffledPlayers.filter(p => p.uid !== firstPlayerUid);
+                const imposter = eligibleImposters[Math.floor(Math.random() * eligibleImposters.length)];
+                
+                const playersWithRoles = gameData.players.map(p => ({
+                    ...p,
+                    role: p.uid === imposter.uid ? 'imposter' : 'crew'
+                }));
 
-            await updateDoc(gameRef, {
-                status: 'playing',
-                players: playersWithRoles,
-                secretWord: secretWord,
-                currentPlayerUid: firstPlayerUid, 
-                turnOrder: turnOrder,
-                round: 1,
-                roundChoices: {},
-                words: [],
-                votes: {},
-                revealedRoles: {}
-            });
+                await updateDoc(gameRef, {
+                    status: 'playing',
+                    players: playersWithRoles,
+                    secretWord: secretWord,
+                    currentPlayerUid: firstPlayerUid, 
+                    turnOrder: turnOrder,
+                    round: 1,
+                    roundChoices: {},
+                    words: [],
+                    votes: {},
+                    revealedRoles: {}
+                });
+            }
         }, 10000);
     }
 });
