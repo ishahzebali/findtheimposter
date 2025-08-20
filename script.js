@@ -28,6 +28,8 @@ const gamesCollectionPath = `artifacts/${appId}/public/data/games`;
 let currentUserId = null;
 let currentGameId = null;
 let gameUnsubscribe = null;
+let turnTimerInterval = null; // For visual countdown
+let hostTimerWatcher = null; // For host to enforce turn time
 
 // --- UI Elements ---
 const screens = {
@@ -56,8 +58,9 @@ function showScreen(screenName) {
     if (screens[screenName]) {
         screens[screenName].classList.remove('hidden');
     }
-    // Clean up confetti when changing screens
     document.querySelectorAll('.confetti').forEach(c => c.remove());
+    if (turnTimerInterval) clearInterval(turnTimerInterval);
+    if (hostTimerWatcher) clearInterval(hostTimerWatcher);
 }
 
 // --- Celebration ---
@@ -107,6 +110,8 @@ function renderGame(gameData) {
     const isMyTurn = gameData.currentPlayerUid === currentUserId;
     const gameContent = document.getElementById('game-content');
     
+    if (turnTimerInterval) clearInterval(turnTimerInterval);
+
     const orderedPlayers = gameData.turnOrder.map(uid => gameData.players.find(p => p.uid === uid));
 
     let playersHTML = orderedPlayers.map(player => {
@@ -127,8 +132,11 @@ function renderGame(gameData) {
     if (gameData.status === 'playing' && isMyTurn) {
         turnHTML = `
             <div class="game-input-area">
-                <h3>Round ${gameData.round}: It's your turn!</h3>
-                <div style="display: flex; gap: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h3>Round ${gameData.round}: It's your turn!</h3>
+                    <div id="timer" style="font-size: 1.5rem; color: #e94560;">30</div>
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
                     <input id="wordInput" type="text" placeholder="Enter your word...">
                     <button id="submitWordBtn" class="btn blue">Submit</button>
                 </div>
@@ -154,6 +162,19 @@ function renderGame(gameData) {
         </div>
         ${turnHTML}
     `;
+
+    if (gameData.status === 'playing' && isMyTurn && gameData.turnEndsAt) {
+        const timerEl = document.getElementById('timer');
+        turnTimerInterval = setInterval(() => {
+            const remaining = Math.ceil((gameData.turnEndsAt.toDate() - new Date()) / 1000);
+            if (timerEl) {
+                timerEl.textContent = remaining > 0 ? remaining : 0;
+            }
+            if (remaining <= 0) {
+                clearInterval(turnTimerInterval);
+            }
+        }, 1000);
+    }
 }
 
 function renderRoundEnd(gameData) {
@@ -186,7 +207,7 @@ function renderRoundEnd(gameData) {
 
     gameContent.innerHTML = `
         <div class="game-input-area">
-            <h3>End of Round ${gameData.round - 1}</h3>
+            <h3>End of Round ${gameData.round}</h3>
             <div class="player-cards-grid">${playersHTML}</div>
             ${choiceHTML}
         </div>
@@ -281,24 +302,25 @@ function joinGame(gameId) {
     gameUnsubscribe = onSnapshot(doc(db, gamesCollectionPath, gameId), (doc) => {
         if (doc.exists()) {
             const gameData = doc.data();
+            const me = gameData.players.find(p => p.uid === currentUserId);
+
+            if (hostTimerWatcher) clearInterval(hostTimerWatcher);
+            if (me?.isHost && gameData.status === 'playing' && gameData.turnEndsAt) {
+                hostTimerWatcher = setTimeout(async () => {
+                    const freshSnap = await getDoc(doc(db, gamesCollectionPath, gameId));
+                    if (freshSnap.exists() && freshSnap.data().currentPlayerUid === gameData.currentPlayerUid) {
+                        console.log("Host advancing turn due to timer.");
+                        await advanceTurn(freshSnap.data(), true); // Skip turn
+                    }
+                }, gameData.turnEndsAt.toDate() - new Date());
+            }
+
             switch (gameData.status) {
-                case 'lobby':
-                    renderLobby(gameData);
-                    showScreen('lobby');
-                    break;
+                case 'lobby': renderLobby(gameData); showScreen('lobby'); break;
                 case 'playing':
-                case 'voting':
-                    renderGame(gameData);
-                    showScreen('game');
-                    break;
-                case 'round-end':
-                    renderRoundEnd(gameData);
-                    showScreen('game');
-                    break;
-                case 'finished':
-                    renderFinished(gameData);
-                    showScreen('game');
-                    break;
+                case 'voting': renderGame(gameData); showScreen('game'); break;
+                case 'round-end': renderRoundEnd(gameData); showScreen('game'); break;
+                case 'finished': renderFinished(gameData); showScreen('game'); break;
             }
         } else {
             alert("Game not found or has been deleted.");
@@ -312,6 +334,35 @@ function leaveGame() {
     currentGameId = null;
     gameUnsubscribe = null;
     showScreen('home');
+}
+
+async function advanceTurn(gameData, skipped = false) {
+    const gameRef = doc(db, gamesCollectionPath, currentGameId);
+    
+    let currentWords = gameData.words;
+    if (skipped) {
+        const me = gameData.players.find(p => p.uid === gameData.currentPlayerUid);
+        currentWords.push({ uid: me.uid, name: me.name, word: "(skipped)", round: gameData.round });
+    }
+
+    const myIndexInTurnOrder = gameData.turnOrder.indexOf(gameData.currentPlayerUid);
+    const wordsThisRound = currentWords.filter(w => w.round === gameData.round);
+
+    if (wordsThisRound.length === gameData.players.length) {
+        // Round is over
+        await updateDoc(gameRef, {
+            status: 'round-end',
+            words: currentWords,
+        });
+    } else {
+        // Continue to next player
+        const nextPlayerUid = gameData.turnOrder[(myIndexInTurnOrder + 1) % gameData.turnOrder.length];
+        await updateDoc(gameRef, { 
+            currentPlayerUid: nextPlayerUid, 
+            turnEndsAt: new Date(Date.now() + 30000),
+            words: currentWords
+        });
+    }
 }
 
 // --- Event Listeners Setup ---
@@ -353,6 +404,7 @@ document.getElementById('lobby-screen').addEventListener('click', async (e) => {
             roundChoices: {},
             words: [],
             votes: {},
+            turnEndsAt: new Date(Date.now() + 30000)
         });
     }
 });
@@ -371,13 +423,9 @@ document.getElementById('game-screen').addEventListener('click', async (e) => {
         const me = gameData.players.find(p => p.uid === currentUserId);
         const newWords = [...gameData.words, { uid: currentUserId, name: me.name, word: wordInput, round: gameData.round }];
         
-        const myIndexInTurnOrder = gameData.turnOrder.indexOf(currentUserId);
-        const nextPlayerUid = gameData.turnOrder[(myIndexInTurnOrder + 1) % gameData.turnOrder.length];
-        
-        const wordsThisRound = newWords.filter(w => w.round === gameData.round);
-        const newStatus = wordsThisRound.length === gameData.players.length ? 'round-end' : 'playing';
-
-        await updateDoc(gameRef, { words: newWords, currentPlayerUid: nextPlayerUid, status: newStatus, round: newStatus === 'round-end' ? gameData.round + 1 : gameData.round });
+        // Immediately update words, then advance turn
+        await updateDoc(gameRef, { words: newWords });
+        await advanceTurn({ ...gameData, words: newWords });
     }
 
     // Handle Round End Choice
@@ -390,10 +438,10 @@ document.getElementById('game-screen').addEventListener('click', async (e) => {
             const votes = Object.values(newRoundChoices).filter(c => c === 'vote').length;
             const continues = gameData.players.length - votes;
             if (votes > continues) {
-                await updateDoc(gameRef, { status: 'voting' });
+                await updateDoc(gameRef, { status: 'voting', round: gameData.round -1 });
             } else {
                 const newTurnOrder = shuffleArray([...gameData.turnOrder]);
-                await updateDoc(gameRef, { status: 'playing', roundChoices: {}, currentPlayerUid: newTurnOrder[0], turnOrder: newTurnOrder });
+                await updateDoc(gameRef, { status: 'playing', roundChoices: {}, currentPlayerUid: newTurnOrder[0], turnOrder: newTurnOrder, turnEndsAt: new Date(Date.now() + 30000) });
             }
         }
     }
@@ -455,7 +503,7 @@ document.getElementById('game-screen').addEventListener('click', async (e) => {
          await updateDoc(gameRef, {
              status: 'playing', secretWord: newSecretWord, players: newPlayers,
              words: [], votes: {}, winner: null, votedOutUid: null, round: 1, roundChoices: {},
-             currentPlayerUid: firstPlayerUid, turnOrder: newTurnOrder,
+             currentPlayerUid: firstPlayerUid, turnOrder: newTurnOrder, turnEndsAt: new Date(Date.now() + 30000)
          });
     }
 });
