@@ -46,18 +46,25 @@
     <!-- Lobby Screen -->
     <div id="lobby-screen" class="screen hidden">
         <div class="container">
-            <h1>Lobby</h1>
-            <p class="subtitle">Share the Game ID with your friends!</p>
-            <div class="game-id-display">
-                <p id="lobbyGameId"></p>
-                <button id="copyGameIdBtn" title="Copy Game ID">
-                    <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#FFFFFF"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
-                </button>
+            <div id="lobby-content">
+                <h1>Lobby</h1>
+                <p class="subtitle">Share the Game ID with your friends!</p>
+                <div class="game-id-display">
+                    <p id="lobbyGameId"></p>
+                    <button id="copyGameIdBtn" title="Copy Game ID">
+                        <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#FFFFFF"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+                    </button>
+                </div>
+                <h2>Players (<span id="playerCount">0</span>)</h2>
+                <div id="playerList" class="player-list"></div>
+                <button id="startGameBtn" class="btn green">Start Game</button>
+                <p id="waitingForHost" class="hidden">Waiting for the host to start...</p>
             </div>
-            <h2>Players (<span id="playerCount">0</span>)</h2>
-            <div id="playerList" class="player-list"></div>
-            <button id="startGameBtn" class="btn green">Start Game</button>
-            <p id="waitingForHost" class="hidden">Waiting for the host to start...</p>
+            <!-- Countdown Timer -->
+            <div id="countdown-container" class="hidden">
+                <h2 class="subtitle">Game Starting In...</h2>
+                <p id="countdown-timer" class="countdown">10</p>
+            </div>
         </div>
     </div>
 
@@ -70,8 +77,18 @@
                 <span id="gameScreenId"></span>
             </div>
         </div>
-        <div id="game-content">
-            <!-- Game content will be rendered here by JavaScript -->
+        <div class="game-layout">
+            <div id="game-content">
+                <!-- Game content will be rendered here by JavaScript -->
+            </div>
+            <!-- Chat Box -->
+            <div id="chat-container" class="chat-container">
+                <div id="chat-messages" class="chat-messages"></div>
+                <div class="chat-input-area">
+                    <input type="text" id="chat-input" placeholder="Type a message...">
+                    <button id="send-chat-btn" class="btn blue">Send</button>
+                </div>
+            </div>
         </div>
     </div>
 

@@ -28,8 +28,7 @@ const gamesCollectionPath = `artifacts/${appId}/public/data/games`;
 let currentUserId = null;
 let currentGameId = null;
 let gameUnsubscribe = null;
-let turnTimerInterval = null; // For visual countdown
-let hostTimerWatcher = null; // For host to enforce turn time
+let countdownInterval = null;
 
 // --- UI Elements ---
 const screens = {
@@ -40,7 +39,12 @@ const screens = {
 };
 
 // --- Word List ---
-const wordList = ["Apple", "Banana", "Carrot", "Internet", "Java", "Kiwi", "Sun", "Moon", "Dog", "Cat", "Car", "Bicycle"];
+const wordList = [
+    "Apple", "Banana", "Carrot", "Internet", "Java", "Kiwi", "Sun", "Moon", "Dog", "Cat", "Car", "Bicycle", "River", "Mountain",
+    "Ocean", "Desert", "Forest", "Rain", "Snow", "Cloud", "Star", "Pizza", "Burger", "Sushi", "Coffee", "Tea", "Book", "Movie",
+    "Music", "Art", "Science", "History", "Math", "Language", "Computer", "Phone", "Television", "Guitar", "Piano", "Drums",
+    "Soccer", "Basketball", "Baseball", "Tennis", "Swimming", "Running", "Doctor", "Teacher", "Artist", "Engineer", "Chef"
+];
 const getRandomWord = () => wordList[Math.floor(Math.random() * wordList.length)];
 
 // --- Helper: Shuffle Array ---
@@ -59,8 +63,7 @@ function showScreen(screenName) {
         screens[screenName].classList.remove('hidden');
     }
     document.querySelectorAll('.confetti').forEach(c => c.remove());
-    if (turnTimerInterval) clearInterval(turnTimerInterval);
-    if (hostTimerWatcher) clearInterval(hostTimerWatcher);
+    if (countdownInterval) clearInterval(countdownInterval);
 }
 
 // --- Celebration ---
@@ -78,6 +81,8 @@ function triggerCelebration(winner) {
 
 // --- Render Functions ---
 function renderLobby(gameData) {
+    document.getElementById('lobby-content').classList.remove('hidden');
+    document.getElementById('countdown-container').classList.add('hidden');
     document.getElementById('lobbyGameId').textContent = gameData.gameId;
     document.getElementById('gameScreenId').textContent = gameData.gameId;
     document.getElementById('playerCount').textContent = gameData.players.length;
@@ -105,13 +110,28 @@ function renderLobby(gameData) {
     }
 }
 
+function renderStarting(gameData) {
+    document.getElementById('lobby-content').classList.add('hidden');
+    document.getElementById('countdown-container').classList.remove('hidden');
+    const timerEl = document.getElementById('countdown-timer');
+
+    if (countdownInterval) clearInterval(countdownInterval);
+    countdownInterval = setInterval(() => {
+        const remaining = Math.ceil((gameData.startTime.toDate() - new Date()) / 1000);
+        if (timerEl) {
+            timerEl.textContent = remaining > 0 ? remaining : 0;
+        }
+        if (remaining <= 0) {
+            clearInterval(countdownInterval);
+        }
+    }, 1000);
+}
+
 function renderGame(gameData) {
     const me = gameData.players.find(p => p.uid === currentUserId);
     const isMyTurn = gameData.currentPlayerUid === currentUserId;
     const gameContent = document.getElementById('game-content');
     
-    if (turnTimerInterval) clearInterval(turnTimerInterval);
-
     const orderedPlayers = gameData.turnOrder.map(uid => gameData.players.find(p => p.uid === uid));
 
     let playersHTML = orderedPlayers.map(player => {
@@ -132,10 +152,7 @@ function renderGame(gameData) {
     if (gameData.status === 'playing' && isMyTurn) {
         turnHTML = `
             <div class="game-input-area">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <h3>Round ${gameData.round}: It's your turn!</h3>
-                    <div id="timer" style="font-size: 1.5rem; color: #e94560;">30</div>
-                </div>
+                <h3>Round ${gameData.round}: It's your turn!</h3>
                 <div style="display: flex; gap: 10px; margin-top: 10px;">
                     <input id="wordInput" type="text" placeholder="Enter your word...">
                     <button id="submitWordBtn" class="btn blue">Submit</button>
@@ -162,19 +179,6 @@ function renderGame(gameData) {
         </div>
         ${turnHTML}
     `;
-
-    if (gameData.status === 'playing' && isMyTurn && gameData.turnEndsAt) {
-        const timerEl = document.getElementById('timer');
-        turnTimerInterval = setInterval(() => {
-            const remaining = Math.ceil((gameData.turnEndsAt.toDate() - new Date()) / 1000);
-            if (timerEl) {
-                timerEl.textContent = remaining > 0 ? remaining : 0;
-            }
-            if (remaining <= 0) {
-                clearInterval(turnTimerInterval);
-            }
-        }, 1000);
-    }
 }
 
 function renderRoundEnd(gameData) {
@@ -250,6 +254,22 @@ function renderFinished(gameData) {
     `;
 }
 
+function renderChat(gameData) {
+    const chatMessages = document.getElementById('chat-messages');
+    chatMessages.innerHTML = '';
+    (gameData.chatMessages || []).forEach(msg => {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `chat-message ${msg.uid === currentUserId ? 'me' : ''}`;
+        msgDiv.innerHTML = `
+            <p class="name">${msg.name}</p>
+            <p class="text">${msg.text}</p>
+        `;
+        chatMessages.appendChild(msgDiv);
+    });
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+
 // --- Game Logic Handlers ---
 async function handleCreateGame() {
     const playerName = document.getElementById('playerName').value.trim();
@@ -268,6 +288,7 @@ async function handleCreateGame() {
         round: 1,
         roundChoices: {},
         turnOrder: [],
+        chatMessages: [],
         createdAt: new Date(),
     };
 
@@ -295,28 +316,79 @@ async function handleJoinGame() {
     }
 }
 
+async function tallyVotes(gameData) {
+    const gameRef = doc(db, gamesCollectionPath, currentGameId);
+    const voteCounts = {};
+    Object.values(gameData.votes).forEach(uid => { voteCounts[uid] = (voteCounts[uid] || 0) + 1; });
+
+    let maxVotes = 0;
+    let candidates = [];
+    for (const uid in voteCounts) {
+        if (voteCounts[uid] > maxVotes) {
+            maxVotes = voteCounts[uid];
+            candidates = [uid];
+        } else if (voteCounts[uid] === maxVotes) {
+            candidates.push(uid);
+        }
+    }
+
+    const imposter = gameData.players.find(p => p.role === 'imposter');
+    let winner, votedOutUid = null, outcomeMessage = '';
+
+    if (candidates.length > 1) {
+        winner = 'Imposter';
+        votedOutUid = null;
+        outcomeMessage = "It's a tie! The crew couldn't decide.";
+    } else {
+        votedOutUid = candidates[0];
+        winner = votedOutUid === imposter.uid ? 'Crew' : 'Imposter';
+        const votedOutPlayer = gameData.players.find(p => p.uid === votedOutUid);
+        outcomeMessage = `The crew voted out ${votedOutPlayer?.name || 'Nobody'}.`;
+    }
+
+    await updateDoc(gameRef, { 
+        status: 'finished', 
+        winner: winner, 
+        votedOutUid: votedOutUid,
+        outcomeMessage: outcomeMessage 
+    });
+}
+
 function joinGame(gameId) {
     currentGameId = gameId;
     if (gameUnsubscribe) gameUnsubscribe();
 
-    gameUnsubscribe = onSnapshot(doc(db, gamesCollectionPath, gameId), (doc) => {
+    gameUnsubscribe = onSnapshot(doc(db, gamesCollectionPath, gameId), async (doc) => {
         if (doc.exists()) {
             const gameData = doc.data();
             const me = gameData.players.find(p => p.uid === currentUserId);
 
-            if (hostTimerWatcher) clearInterval(hostTimerWatcher);
-            if (me?.isHost && gameData.status === 'playing' && gameData.turnEndsAt) {
-                hostTimerWatcher = setTimeout(async () => {
-                    const freshSnap = await getDoc(doc(db, gamesCollectionPath, gameId));
-                    if (freshSnap.exists() && freshSnap.data().currentPlayerUid === gameData.currentPlayerUid) {
-                        console.log("Host advancing turn due to timer.");
-                        await advanceTurn(freshSnap.data(), true); // Skip turn
-                    }
-                }, gameData.turnEndsAt.toDate() - new Date());
+            if (gameData.status !== 'lobby' && gameData.initialPlayerCount && gameData.players.length < gameData.initialPlayerCount) {
+                if (me?.isHost) {
+                    await updateDoc(doc(db, gamesCollectionPath, gameId), {
+                        status: 'finished',
+                        winner: 'Nobody',
+                        outcomeMessage: 'A player disconnected. The game has ended.'
+                    });
+                }
+                return;
+            }
+            
+            if (gameData.status === 'voting' && Object.keys(gameData.votes).length === gameData.players.length) {
+                if (me?.isHost) {
+                    await tallyVotes(gameData);
+                }
+                return;
+            }
+
+            // Always render chat if in game
+            if (gameData.status !== 'lobby') {
+                renderChat(gameData);
             }
 
             switch (gameData.status) {
                 case 'lobby': renderLobby(gameData); showScreen('lobby'); break;
+                case 'starting': renderStarting(gameData); showScreen('lobby'); break;
                 case 'playing':
                 case 'voting': renderGame(gameData); showScreen('game'); break;
                 case 'round-end': renderRoundEnd(gameData); showScreen('game'); break;
@@ -336,31 +408,18 @@ function leaveGame() {
     showScreen('home');
 }
 
-async function advanceTurn(gameData, skipped = false) {
+async function advanceTurn(gameData) {
     const gameRef = doc(db, gamesCollectionPath, currentGameId);
     
-    let currentWords = gameData.words;
-    if (skipped) {
-        const me = gameData.players.find(p => p.uid === gameData.currentPlayerUid);
-        currentWords.push({ uid: me.uid, name: me.name, word: "(skipped)", round: gameData.round });
-    }
-
     const myIndexInTurnOrder = gameData.turnOrder.indexOf(gameData.currentPlayerUid);
-    const wordsThisRound = currentWords.filter(w => w.round === gameData.round);
+    const wordsThisRound = gameData.words.filter(w => w.round === gameData.round);
 
     if (wordsThisRound.length === gameData.players.length) {
-        // Round is over
-        await updateDoc(gameRef, {
-            status: 'round-end',
-            words: currentWords,
-        });
+        await updateDoc(gameRef, { status: 'round-end' });
     } else {
-        // Continue to next player
         const nextPlayerUid = gameData.turnOrder[(myIndexInTurnOrder + 1) % gameData.turnOrder.length];
         await updateDoc(gameRef, { 
             currentPlayerUid: nextPlayerUid, 
-            turnEndsAt: new Date(Date.now() + 30000),
-            words: currentWords
         });
     }
 }
@@ -376,36 +435,43 @@ document.getElementById('copyGameIdBtn').addEventListener('click', () => {
 document.getElementById('lobby-screen').addEventListener('click', async (e) => {
     if (e.target.id === 'startGameBtn') {
         const gameRef = doc(db, gamesCollectionPath, currentGameId);
-        const gameSnap = await getDoc(gameRef);
-        if (!gameSnap.exists()) return;
-        
-        const gameData = gameSnap.data();
-        const secretWord = getRandomWord();
-        
-        const shuffledPlayers = shuffleArray([...gameData.players]);
-        const turnOrder = shuffledPlayers.map(p => p.uid);
-
-        const firstPlayerUid = turnOrder[0];
-        const eligibleImposters = shuffledPlayers.filter(p => p.uid !== firstPlayerUid);
-        const imposter = eligibleImposters[Math.floor(Math.random() * eligibleImposters.length)];
-        
-        const playersWithRoles = gameData.players.map(p => ({
-            ...p,
-            role: p.uid === imposter.uid ? 'imposter' : 'crew'
-        }));
-
         await updateDoc(gameRef, {
-            status: 'playing',
-            players: playersWithRoles,
-            secretWord: secretWord,
-            currentPlayerUid: firstPlayerUid, 
-            turnOrder: turnOrder,
-            round: 1,
-            roundChoices: {},
-            words: [],
-            votes: {},
-            turnEndsAt: new Date(Date.now() + 30000)
+            status: 'starting',
+            startTime: new Date(Date.now() + 10000)
         });
+
+        setTimeout(async () => {
+            const gameSnap = await getDoc(gameRef);
+            if (!gameSnap.exists() || gameSnap.data().status !== 'starting') return;
+            
+            const gameData = gameSnap.data();
+            const secretWord = getRandomWord();
+            
+            const shuffledPlayers = shuffleArray([...gameData.players]);
+            const turnOrder = shuffledPlayers.map(p => p.uid);
+
+            const firstPlayerUid = turnOrder[0];
+            const eligibleImposters = shuffledPlayers.filter(p => p.uid !== firstPlayerUid);
+            const imposter = eligibleImposters[Math.floor(Math.random() * eligibleImposters.length)];
+            
+            const playersWithRoles = gameData.players.map(p => ({
+                ...p,
+                role: p.uid === imposter.uid ? 'imposter' : 'crew'
+            }));
+
+            await updateDoc(gameRef, {
+                status: 'playing',
+                players: playersWithRoles,
+                secretWord: secretWord,
+                currentPlayerUid: firstPlayerUid, 
+                turnOrder: turnOrder,
+                round: 1,
+                roundChoices: {},
+                words: [],
+                votes: {},
+                initialPlayerCount: gameData.players.length
+            });
+        }, 10000);
     }
 });
 
@@ -423,7 +489,6 @@ document.getElementById('game-screen').addEventListener('click', async (e) => {
         const me = gameData.players.find(p => p.uid === currentUserId);
         const newWords = [...gameData.words, { uid: currentUserId, name: me.name, word: wordInput, round: gameData.round }];
         
-        // Immediately update words, then advance turn
         await updateDoc(gameRef, { words: newWords });
         await advanceTurn({ ...gameData, words: newWords });
     }
@@ -438,10 +503,16 @@ document.getElementById('game-screen').addEventListener('click', async (e) => {
             const votes = Object.values(newRoundChoices).filter(c => c === 'vote').length;
             const continues = gameData.players.length - votes;
             if (votes > continues) {
-                await updateDoc(gameRef, { status: 'voting', round: gameData.round -1 });
+                await updateDoc(gameRef, { status: 'voting' });
             } else {
                 const newTurnOrder = shuffleArray([...gameData.turnOrder]);
-                await updateDoc(gameRef, { status: 'playing', roundChoices: {}, currentPlayerUid: newTurnOrder[0], turnOrder: newTurnOrder, turnEndsAt: new Date(Date.now() + 30000) });
+                await updateDoc(gameRef, { 
+                    status: 'playing', 
+                    round: gameData.round + 1,
+                    roundChoices: {}, 
+                    currentPlayerUid: newTurnOrder[0], 
+                    turnOrder: newTurnOrder, 
+                });
             }
         }
     }
@@ -449,45 +520,9 @@ document.getElementById('game-screen').addEventListener('click', async (e) => {
     // Vote
     if (e.target.classList.contains('vote-btn')) {
         const votedForUid = e.target.dataset.voteUid;
-        const newVotes = { ...(gameData.votes || {}), [currentUserId]: votedForUid };
-        await updateDoc(gameRef, { votes: newVotes });
-
-        if (Object.keys(newVotes).length === gameData.players.length) {
-            const voteCounts = {};
-            Object.values(newVotes).forEach(uid => { voteCounts[uid] = (voteCounts[uid] || 0) + 1; });
-
-            let maxVotes = 0;
-            let candidates = [];
-            for (const uid in voteCounts) {
-                if (voteCounts[uid] > maxVotes) {
-                    maxVotes = voteCounts[uid];
-                    candidates = [uid];
-                } else if (voteCounts[uid] === maxVotes) {
-                    candidates.push(uid);
-                }
-            }
-
-            const imposter = gameData.players.find(p => p.role === 'imposter');
-            let winner, votedOutUid = null, outcomeMessage = '';
-
-            if (candidates.length > 1) {
-                winner = 'Imposter';
-                votedOutUid = null;
-                outcomeMessage = "It's a tie! The crew couldn't decide.";
-            } else {
-                votedOutUid = candidates[0];
-                winner = votedOutUid === imposter.uid ? 'Crew' : 'Imposter';
-                const votedOutPlayer = gameData.players.find(p => p.uid === votedOutUid);
-                outcomeMessage = `The crew voted out ${votedOutPlayer?.name || 'Nobody'}.`;
-            }
-
-            await updateDoc(gameRef, { 
-                status: 'finished', 
-                winner: winner, 
-                votedOutUid: votedOutUid,
-                outcomeMessage: outcomeMessage 
-            });
-        }
+        await updateDoc(gameRef, {
+            [`votes.${currentUserId}`]: votedForUid
+        });
     }
 
     // Play Again
@@ -503,9 +538,34 @@ document.getElementById('game-screen').addEventListener('click', async (e) => {
          await updateDoc(gameRef, {
              status: 'playing', secretWord: newSecretWord, players: newPlayers,
              words: [], votes: {}, winner: null, votedOutUid: null, round: 1, roundChoices: {},
-             currentPlayerUid: firstPlayerUid, turnOrder: newTurnOrder, turnEndsAt: new Date(Date.now() + 30000)
+             currentPlayerUid: firstPlayerUid, turnOrder: newTurnOrder, initialPlayerCount: newPlayers.length, chatMessages: []
          });
     }
+});
+
+document.getElementById('send-chat-btn').addEventListener('click', async () => {
+    const chatInput = document.getElementById('chat-input');
+    const text = chatInput.value.trim();
+    if (!text) return;
+
+    const gameRef = doc(db, gamesCollectionPath, currentGameId);
+    const gameSnap = await getDoc(gameRef);
+    if (!gameSnap.exists()) return;
+
+    const gameData = gameSnap.data();
+    const me = gameData.players.find(p => p.uid === currentUserId);
+
+    const newMessage = {
+        uid: currentUserId,
+        name: me.name,
+        text: text,
+        timestamp: new Date()
+    };
+
+    await updateDoc(gameRef, {
+        chatMessages: [...(gameData.chatMessages || []), newMessage]
+    });
+    chatInput.value = '';
 });
 
 // --- Authentication ---
