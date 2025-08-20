@@ -169,13 +169,10 @@ async function renderRoleReveal(gameData) {
 
     showScreen('role-reveal');
     
-    const gameRef = doc(db, gamesCollectionPath, currentGameId);
-    await updateDoc(gameRef, { [`revealedRoles.${currentUserId}`]: true });
-
-    setTimeout(() => {
+    setTimeout(async () => {
         if (currentGameId) {
-            renderGame(gameData);
-            showScreen('game');
+            const gameRef = doc(db, gamesCollectionPath, currentGameId);
+            await updateDoc(gameRef, { [`revealedRoles.${currentUserId}`]: true });
             isRevealingRole = false;
         }
     }, 4000);
@@ -412,7 +409,7 @@ function joinGame(gameId) {
             const me = gameData.players.find(p => p.uid === currentUserId);
             const activePlayers = gameData.players.filter(p => !p.disconnected);
 
-            if (gameData.status !== 'starting' && countdownInterval) {
+            if (countdownInterval && gameData.status !== 'starting' && gameData.status !== 'voting') {
                 clearInterval(countdownInterval);
                 countdownInterval = null;
             }
@@ -449,7 +446,31 @@ function joinGame(gameId) {
                         showScreen('game');
                     }
                     break;
-                case 'voting': renderGame(gameData); showScreen('game'); break;
+                case 'voting': 
+                    renderGame(gameData); 
+                    showScreen('game'); 
+                    if (me?.isHost) {
+                        setTimeout(async () => {
+                            const freshSnap = await getDoc(doc(db, gamesCollectionPath, gameId));
+                            if (freshSnap.exists() && freshSnap.data().status === 'voting') {
+                                await tallyVotes(freshSnap.data());
+                            }
+                        }, 30000);
+                    }
+                    const timerEl = document.getElementById('vote-timer');
+                    if (timerEl) {
+                        let timeLeft = 30;
+                        timerEl.textContent = timeLeft;
+                        countdownInterval = setInterval(() => {
+                            timeLeft--;
+                            timerEl.textContent = timeLeft > 0 ? timeLeft : 0;
+                            if (timeLeft <= 0) {
+                                clearInterval(countdownInterval);
+                                countdownInterval = null;
+                            }
+                        }, 1000);
+                    }
+                    break;
                 case 'round-end': renderRoundEnd(gameData); showScreen('game'); break;
                 case 'finished': renderFinished(gameData); showScreen('game'); break;
             }
@@ -504,6 +525,11 @@ document.getElementById('copyGameIdBtn').addEventListener('click', () => {
 });
 document.getElementById('game-screen').addEventListener('click', (e) => {
     if (e.target.id === 'exitGameBtn') {
+        leaveGame();
+    }
+});
+document.getElementById('lobby-screen').addEventListener('click', (e) => {
+    if (e.target.id === 'exitLobbyBtn') {
         leaveGame();
     }
 });
