@@ -393,6 +393,7 @@ async function tallyVotes(gameData) {
 
 function joinGame(gameId) {
     currentGameId = gameId;
+    localStorage.setItem('pretenderGameId', gameId);
     if (gameUnsubscribe) gameUnsubscribe();
 
     gameUnsubscribe = onSnapshot(doc(db, gamesCollectionPath, gameId), async (doc) => {
@@ -452,6 +453,7 @@ function joinGame(gameId) {
 function leaveGame() {
     if (gameUnsubscribe) gameUnsubscribe();
     if (countdownInterval) clearInterval(countdownInterval);
+    localStorage.removeItem('pretenderGameId');
     currentGameId = null;
     gameUnsubscribe = null;
     showScreen('home');
@@ -607,7 +609,12 @@ document.getElementById('game-screen').addEventListener('click', async (e) => {
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         currentUserId = user.uid;
-        showScreen('home');
+        const savedGameId = localStorage.getItem('pretenderGameId');
+        if (savedGameId) {
+            joinGame(savedGameId);
+        } else {
+            showScreen('home');
+        }
     } else {
         try {
             const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
