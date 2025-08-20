@@ -152,23 +152,26 @@ function renderStarting(gameData) {
     }, 1000);
 }
 
-function renderRoleReveal(gameData) {
+async function renderRoleReveal(gameData) {
     const me = gameData.players.find(p => p.uid === currentUserId);
     const roleEl = document.getElementById('reveal-role');
     const wordEl = document.getElementById('reveal-word');
 
     roleEl.textContent = me.role.toUpperCase();
-    roleEl.className = `reveal-role ${me.role}`; // for styling
+    roleEl.className = `reveal-role ${me.role}`;
     wordEl.textContent = me.role === 'imposter' ? '???' : gameData.secretWord;
 
     showScreen('role-reveal');
+    
+    const gameRef = doc(db, gamesCollectionPath, currentGameId);
+    await updateDoc(gameRef, { [`revealedRoles.${currentUserId}`]: true });
 
     setTimeout(() => {
-        if (currentGameId) { // Ensure we are still in a game
+        if (currentGameId) {
             renderGame(gameData);
             showScreen('game');
         }
-    }, 4000); // Show for 4 seconds
+    }, 4000);
 }
 
 
