@@ -495,7 +495,7 @@ async function advanceTurn(gameData) {
     }
 }
 
-// --- Event Listeners Setup ---
+// --- Main App Logic ---
 window.addEventListener('DOMContentLoaded', () => {
     screens = {
         loading: document.getElementById('loading-screen'),
