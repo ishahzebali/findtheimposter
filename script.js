@@ -32,7 +32,6 @@ let localPlayerList = [];
 let audioStarted = false;
 let countdownInterval = null;
 let isRevealingRole = false;
-let hostTurnTimer = null;
 
 // --- Sound Effects ---
 const winSound = new Tone.Synth({ oscillator: { type: "sine" } }).toDestination();
@@ -76,10 +75,6 @@ function showScreen(screenName) {
         screens[screenName].classList.remove('hidden');
     }
     document.querySelectorAll('.confetti').forEach(c => c.remove());
-    if (countdownInterval) clearInterval(countdownInterval);
-    countdownInterval = null;
-    if (hostTurnTimer) clearTimeout(hostTurnTimer);
-    hostTurnTimer = null;
 }
 
 // --- Sound & Celebration ---
