@@ -647,6 +647,8 @@ window.addEventListener('DOMContentLoaded', () => {
     onAuthStateChanged(auth, async (user) => {
         if (user) {
             currentUserId = user.uid;
+            document.getElementById('createGameBtn').disabled = false;
+            document.getElementById('joinGameBtn').disabled = false;
             const savedGameId = localStorage.getItem('pretenderGameId');
             if (savedGameId) {
                 joinGame(savedGameId);
