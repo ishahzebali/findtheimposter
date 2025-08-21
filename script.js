@@ -72,7 +72,9 @@ window.addEventListener('DOMContentLoaded', () => {
 
     // --- UI Control ---
     function showScreen(screenName) {
-        Object.values(screens).forEach(screen => screen.classList.add('hidden'));
+        Object.values(screens).forEach(screen => {
+            if (screen) screen.classList.add('hidden');
+        });
         if (screens[screenName]) {
             screens[screenName].classList.remove('hidden');
         }
@@ -112,7 +114,10 @@ window.addEventListener('DOMContentLoaded', () => {
 
     // --- Render Functions ---
     function renderLobby(gameData) {
-        document.getElementById('lobby-content').classList.remove('hidden');
+        const lobbyContent = document.getElementById('lobby-content');
+        if (!lobbyContent) return;
+
+        lobbyContent.classList.remove('hidden');
         document.getElementById('countdown-container').classList.add('hidden');
         document.getElementById('lobbyGameId').textContent = gameData.gameId;
         document.getElementById('gameScreenId').textContent = gameData.gameId;
@@ -142,8 +147,12 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderStarting(gameData) {
-        document.getElementById('lobby-content').classList.add('hidden');
-        document.getElementById('countdown-container').classList.remove('hidden');
+        const lobbyContent = document.getElementById('lobby-content');
+        const countdownContainer = document.getElementById('countdown-container');
+        if (!lobbyContent || !countdownContainer) return;
+
+        lobbyContent.classList.add('hidden');
+        countdownContainer.classList.remove('hidden');
         const timerEl = document.getElementById('countdown-timer');
 
         if (countdownInterval) clearInterval(countdownInterval);
@@ -164,6 +173,7 @@ window.addEventListener('DOMContentLoaded', () => {
         const me = gameData.players.find(p => p.uid === currentUserId);
         const roleEl = document.getElementById('reveal-role');
         const wordEl = document.getElementById('reveal-word');
+        if (!roleEl || !wordEl) return;
 
         roleEl.textContent = me.role.toUpperCase();
         roleEl.className = `reveal-role ${me.role}`;
@@ -183,9 +193,10 @@ window.addEventListener('DOMContentLoaded', () => {
 
     function renderGame(gameData) {
         const me = gameData.players.find(p => p.uid === currentUserId);
-        const isMyTurn = gameData.currentPlayerUid === currentUserId;
         const gameContent = document.getElementById('game-content');
+        if (!me || !gameContent) return;
         
+        const isMyTurn = gameData.currentPlayerUid === currentUserId;
         const orderedPlayers = gameData.turnOrder.map(uid => gameData.players.find(p => p.uid === uid));
 
         let playersHTML = orderedPlayers.map(player => {
@@ -232,8 +243,9 @@ window.addEventListener('DOMContentLoaded', () => {
 
     function renderRoundEnd(gameData) {
         const gameContent = document.getElementById('game-content');
+        if (!gameContent) return;
+        
         const myChoice = gameData.roundChoices ? gameData.roundChoices[currentUserId] : null;
-
         const orderedPlayers = gameData.turnOrder.map(uid => gameData.players.find(p => p.uid === uid));
 
         let playersHTML = orderedPlayers.map(player => {
@@ -270,6 +282,8 @@ window.addEventListener('DOMContentLoaded', () => {
     function renderFinished(gameData) {
         const imposter = gameData.players.find(p => p.role === 'imposter');
         const me = gameData.players.find(p => p.uid === currentUserId);
+        if (!imposter || !me) return;
+
         triggerCelebration(gameData.winner, me);
         const gameContent = document.getElementById('game-content');
 
