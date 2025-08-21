@@ -32,7 +32,7 @@ let localPlayerList = [];
 let audioStarted = false;
 let countdownInterval = null;
 let isRevealingRole = false;
-let hostVoteTimerWatcher = null;
+let hostTurnTimer = null;
 
 // --- Sound Effects ---
 const winSound = new Tone.Synth({ oscillator: { type: "sine" } }).toDestination();
@@ -78,8 +78,8 @@ function showScreen(screenName) {
     document.querySelectorAll('.confetti').forEach(c => c.remove());
     if (countdownInterval) clearInterval(countdownInterval);
     countdownInterval = null;
-    if (hostVoteTimerWatcher) clearInterval(hostVoteTimerWatcher);
-    hostVoteTimerWatcher = null;
+    if (hostTurnTimer) clearTimeout(hostTurnTimer);
+    hostTurnTimer = null;
 }
 
 // --- Sound & Celebration ---
@@ -199,7 +199,7 @@ function renderGame(gameData) {
         
         return `
             <div class="player-card ${isCurrentPlayer && gameData.status === 'playing' ? 'current-player' : ''} ${player.disconnected ? 'disconnected' : ''}">
-                <p class="name">${player.name} ${player.disconnected ? '(Left)' : ''}</p>
+                <p class="name">${player.name} ${player.isBot ? '🤖' : ''} ${player.disconnected ? '(Left)' : ''}</p>
                 <p class="word">${wordsForPlayer || '...'}</p>
                 ${hasVoted && gameData.status === 'voting' ? '<div class="voted-indicator">Voted ✓</div>' : ''}
                 ${canVote ? `<button data-vote-uid="${player.uid}" class="btn blue vote-btn">Vote</button>` : ''}
@@ -218,16 +218,6 @@ function renderGame(gameData) {
                 </div>
             </div>
         `;
-    } else if (gameData.status === 'voting') {
-         turnHTML = `
-            <div class="game-input-area">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <h3>Vote for the Imposter!</h3>
-                    <div id="vote-timer">30</div>
-                </div>
-                <p>${(gameData.votes && gameData.votes[currentUserId]) ? 'Waiting for others...' : 'Click vote on a player card.'}</p>
-            </div>
-         `;
     }
 
     gameContent.innerHTML = `
@@ -253,7 +243,7 @@ function renderRoundEnd(gameData) {
         const wordsForPlayer = gameData.words.filter(w => w.uid === player.uid).map(w => w.word).join(', ');
         return `
             <div class="player-card ${player.disconnected ? 'disconnected' : ''}">
-                <p class="name">${player.name} ${player.disconnected ? '(Left)' : ''}</p>
+                <p class="name">${player.name} ${player.isBot ? '🤖' : ''} ${player.disconnected ? '(Left)' : ''}</p>
                 <p class="word">${wordsForPlayer || '...'}</p>
             </div>
         `;
@@ -295,7 +285,7 @@ function renderFinished(gameData) {
         return `
             <div class="player-card ${player.disconnected ? 'disconnected' : ''}">
                 <div style="display:flex; justify-content: space-between; align-items: center;">
-                    <p class="name">${player.name}</p>
+                    <p class="name">${player.name} ${player.isBot ? '🤖' : ''}</p>
                     <span class="role-tag ${player.role === 'imposter' ? 'imposter' : 'crew'}">${player.role.toUpperCase()}</span>
                 </div>
                 <p class="word">${wordsForPlayer}</p>

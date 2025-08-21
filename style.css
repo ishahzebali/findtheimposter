@@ -215,6 +215,10 @@ label { display: block; margin-bottom: 10px; font-size: 0.9rem; }
     font-weight: bold;
     color: #50c878;
 }
+.bot-indicator {
+    font-size: 1rem;
+    margin-left: 5px;
+}
 .role-tag.imposter { background-color: #e94560; }
 .role-tag.crew { background-color: #50c878; }
 .player-card .btn { font-family: system-ui, sans-serif; text-transform: none; border-radius: 6px; }
@@ -257,11 +261,6 @@ label { display: block; margin-bottom: 10px; font-size: 0.9rem; }
     outline: none;
 }
 .game-input-area .btn {
-    font-family: 'Press Start 2P', cursive;
-}
-#vote-timer {
-    font-size: 1.5rem;
-    color: #e94560;
     font-family: 'Press Start 2P', cursive;
 }
 
