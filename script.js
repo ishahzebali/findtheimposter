@@ -38,13 +38,7 @@ const winSound = new Tone.Synth({ oscillator: { type: "sine" } }).toDestination(
 const loseSound = new Tone.Synth({ oscillator: { type: "triangle" } }).toDestination();
 
 // --- UI Elements ---
-const screens = {
-    loading: document.getElementById('loading-screen'),
-    home: document.getElementById('home-screen'),
-    lobby: document.getElementById('lobby-screen'),
-    game: document.getElementById('game-screen'),
-    'role-reveal': document.getElementById('role-reveal-screen'),
-};
+let screens = {};
 
 // --- Word List ---
 const wordList = [
@@ -643,26 +637,36 @@ document.getElementById('game-screen').addEventListener('click', async (e) => {
 });
 
 // --- Authentication ---
-onAuthStateChanged(auth, async (user) => {
-    if (user) {
-        currentUserId = user.uid;
-        const savedGameId = localStorage.getItem('pretenderGameId');
-        if (savedGameId) {
-            joinGame(savedGameId);
-        } else {
-            showScreen('home');
-        }
-    } else {
-        try {
-            const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-            if (token) {
-                await signInWithCustomToken(auth, token);
+window.addEventListener('DOMContentLoaded', () => {
+    screens = {
+        loading: document.getElementById('loading-screen'),
+        home: document.getElementById('home-screen'),
+        lobby: document.getElementById('lobby-screen'),
+        game: document.getElementById('game-screen'),
+        'role-reveal': document.getElementById('role-reveal-screen'),
+    };
+    
+    onAuthStateChanged(auth, async (user) => {
+        if (user) {
+            currentUserId = user.uid;
+            const savedGameId = localStorage.getItem('pretenderGameId');
+            if (savedGameId) {
+                joinGame(savedGameId);
             } else {
+                showScreen('home');
+            }
+        } else {
+            try {
+                const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                if (token) {
+                    await signInWithCustomToken(auth, token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Auth Error:", error);
                 await signInAnonymously(auth);
             }
-        } catch (error) {
-            console.error("Auth Error:", error);
-            await signInAnonymously(auth);
         }
-    }
+    });
 });
