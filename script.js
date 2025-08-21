@@ -496,147 +496,6 @@ async function advanceTurn(gameData) {
 }
 
 // --- Event Listeners Setup ---
-document.getElementById('createGameBtn').addEventListener('click', handleCreateGame);
-document.getElementById('joinGameBtn').addEventListener('click', handleJoinGame);
-document.getElementById('copyGameIdBtn').addEventListener('click', () => {
-    navigator.clipboard.writeText(currentGameId);
-    alert('Game ID copied!');
-});
-document.getElementById('game-screen').addEventListener('click', (e) => {
-    if (e.target.id === 'exitGameBtn') {
-        leaveGame();
-    }
-});
-document.getElementById('lobby-screen').addEventListener('click', (e) => {
-    if (e.target.id === 'exitLobbyBtn') {
-        leaveGame();
-    }
-});
-
-document.getElementById('lobby-screen').addEventListener('click', async (e) => {
-    if (e.target.id === 'startGameBtn') {
-        const gameRef = doc(db, gamesCollectionPath, currentGameId);
-        await updateDoc(gameRef, {
-            status: 'starting',
-            startTime: new Date(Date.now() + 10000)
-        });
-
-        setTimeout(async () => {
-            const gameSnap = await getDoc(gameRef);
-            if (gameSnap.exists() && gameSnap.data().status === 'starting') {
-                const gameData = gameSnap.data();
-                const secretWord = getRandomWord(gameData.usedWords);
-                
-                const shuffledPlayers = shuffleArray([...gameData.players]);
-                const turnOrder = shuffledPlayers.map(p => p.uid);
-
-                const firstPlayerUid = turnOrder[0];
-                const eligibleImposters = shuffledPlayers.filter(p => p.uid !== firstPlayerUid);
-                const imposter = eligibleImposters[Math.floor(Math.random() * eligibleImposters.length)];
-                
-                const playersWithRoles = gameData.players.map(p => ({
-                    ...p,
-                    role: p.uid === imposter.uid ? 'imposter' : 'crew'
-                }));
-
-                await updateDoc(gameRef, {
-                    status: 'playing',
-                    players: playersWithRoles,
-                    secretWord: secretWord,
-                    currentPlayerUid: firstPlayerUid, 
-                    turnOrder: turnOrder,
-                    round: 1,
-                    roundChoices: {},
-                    words: [],
-                    votes: {},
-                    revealedRoles: {},
-                    usedWords: [...(gameData.usedWords || []), secretWord]
-                });
-            }
-        }, 10000);
-    }
-});
-
-document.getElementById('game-screen').addEventListener('click', async (e) => {
-    const gameRef = doc(db, gamesCollectionPath, currentGameId);
-    const gameSnap = await getDoc(gameRef);
-    if (!gameSnap.exists()) return;
-    const gameData = gameSnap.data();
-    const activePlayers = gameData.players.filter(p => !p.disconnected);
-
-    // Submit Word
-    if (e.target.id === 'submitWordBtn') {
-        const wordInput = document.getElementById('wordInput').value.trim();
-        if (!wordInput) return;
-        
-        const me = gameData.players.find(p => p.uid === currentUserId);
-        const newWords = [...gameData.words, { uid: currentUserId, name: me.name, word: wordInput, round: gameData.round }];
-        
-        await updateDoc(gameRef, { words: newWords });
-        await advanceTurn({ ...gameData, words: newWords });
-    }
-
-    // Handle Round End Choice
-    if (e.target.id === 'continueBtn' || e.target.id === 'voteNowBtn') {
-        const choice = e.target.id === 'continueBtn' ? 'continue' : 'vote';
-        const newRoundChoices = { ...gameData.roundChoices, [currentUserId]: choice };
-        await updateDoc(gameRef, { roundChoices: newRoundChoices });
-
-        if (Object.keys(newRoundChoices).length === activePlayers.length) {
-            const votes = Object.values(newRoundChoices).filter(c => c === 'vote').length;
-            const continues = activePlayers.length - votes;
-            if (votes > continues) {
-                await updateDoc(gameRef, { status: 'voting', voteEndTime: new Date(Date.now() + 30000) });
-            } else {
-                const newTurnOrder = shuffleArray([...gameData.turnOrder]);
-                await updateDoc(gameRef, { 
-                    status: 'playing', 
-                    round: gameData.round + 1,
-                    roundChoices: {}, 
-                    currentPlayerUid: newTurnOrder[0], 
-                    turnOrder: newTurnOrder, 
-                });
-            }
-        }
-    }
-
-    // Vote
-    if (e.target.classList.contains('vote-btn')) {
-        const votedForUid = e.target.dataset.voteUid;
-        await updateDoc(gameRef, {
-            [`votes.${currentUserId}`]: votedForUid
-        });
-    }
-
-    // Play Again
-    if (e.target.id === 'playAgainBtn') {
-         const secretWord = getRandomWord(gameData.usedWords);
-         const shuffledPlayers = shuffleArray([...gameData.players]);
-         const newTurnOrder = shuffledPlayers.map(p => p.uid);
-         const firstPlayerUid = newTurnOrder[0];
-         const eligibleImposters = shuffledPlayers.filter(p => p.uid !== firstPlayerUid);
-         const imposter = eligibleImposters[Math.floor(Math.random() * eligibleImposters.length)];
-         const newPlayers = gameData.players.map(p => ({...p, role: p.uid === imposter.uid ? 'imposter' : 'crew', disconnected: false}));
-         
-         await updateDoc(gameRef, {
-             status: 'playing', 
-             secretWord: secretWord, 
-             players: newPlayers,
-             words: [], 
-             votes: {}, 
-             winner: null, 
-             votedOutUid: null, 
-             round: 1, 
-             roundChoices: {},
-             currentPlayerUid: firstPlayerUid, 
-             turnOrder: newTurnOrder, 
-             revealedRoles: {},
-             usedWords: [...(gameData.usedWords || []), secretWord]
-         });
-    }
-});
-
-// --- Authentication ---
 window.addEventListener('DOMContentLoaded', () => {
     screens = {
         loading: document.getElementById('loading-screen'),
@@ -646,6 +505,146 @@ window.addEventListener('DOMContentLoaded', () => {
         'role-reveal': document.getElementById('role-reveal-screen'),
     };
     
+    document.getElementById('createGameBtn').addEventListener('click', handleCreateGame);
+    document.getElementById('joinGameBtn').addEventListener('click', handleJoinGame);
+    document.getElementById('copyGameIdBtn').addEventListener('click', () => {
+        navigator.clipboard.writeText(currentGameId);
+        alert('Game ID copied!');
+    });
+    document.getElementById('game-screen').addEventListener('click', (e) => {
+        if (e.target.id === 'exitGameBtn') {
+            leaveGame();
+        }
+    });
+    document.getElementById('lobby-screen').addEventListener('click', (e) => {
+        if (e.target.id === 'exitLobbyBtn') {
+            leaveGame();
+        }
+    });
+
+    document.getElementById('lobby-screen').addEventListener('click', async (e) => {
+        if (e.target.id === 'startGameBtn') {
+            const gameRef = doc(db, gamesCollectionPath, currentGameId);
+            await updateDoc(gameRef, {
+                status: 'starting',
+                startTime: new Date(Date.now() + 10000)
+            });
+
+            setTimeout(async () => {
+                const gameSnap = await getDoc(gameRef);
+                if (gameSnap.exists() && gameSnap.data().status === 'starting') {
+                    const gameData = gameSnap.data();
+                    const secretWord = getRandomWord(gameData.usedWords);
+                    
+                    const shuffledPlayers = shuffleArray([...gameData.players]);
+                    const turnOrder = shuffledPlayers.map(p => p.uid);
+
+                    const firstPlayerUid = turnOrder[0];
+                    const eligibleImposters = shuffledPlayers.filter(p => p.uid !== firstPlayerUid);
+                    const imposter = eligibleImposters[Math.floor(Math.random() * eligibleImposters.length)];
+                    
+                    const playersWithRoles = gameData.players.map(p => ({
+                        ...p,
+                        role: p.uid === imposter.uid ? 'imposter' : 'crew'
+                    }));
+
+                    await updateDoc(gameRef, {
+                        status: 'playing',
+                        players: playersWithRoles,
+                        secretWord: secretWord,
+                        currentPlayerUid: firstPlayerUid, 
+                        turnOrder: turnOrder,
+                        round: 1,
+                        roundChoices: {},
+                        words: [],
+                        votes: {},
+                        revealedRoles: {},
+                        usedWords: [...(gameData.usedWords || []), secretWord]
+                    });
+                }
+            }, 10000);
+        }
+    });
+
+    document.getElementById('game-screen').addEventListener('click', async (e) => {
+        const gameRef = doc(db, gamesCollectionPath, currentGameId);
+        const gameSnap = await getDoc(gameRef);
+        if (!gameSnap.exists()) return;
+        const gameData = gameSnap.data();
+        const activePlayers = gameData.players.filter(p => !p.disconnected);
+
+        // Submit Word
+        if (e.target.id === 'submitWordBtn') {
+            const wordInput = document.getElementById('wordInput').value.trim();
+            if (!wordInput) return;
+            
+            const me = gameData.players.find(p => p.uid === currentUserId);
+            const newWords = [...gameData.words, { uid: currentUserId, name: me.name, word: wordInput, round: gameData.round }];
+            
+            await updateDoc(gameRef, { words: newWords });
+            await advanceTurn({ ...gameData, words: newWords });
+        }
+
+        // Handle Round End Choice
+        if (e.target.id === 'continueBtn' || e.target.id === 'voteNowBtn') {
+            const choice = e.target.id === 'continueBtn' ? 'continue' : 'vote';
+            const newRoundChoices = { ...gameData.roundChoices, [currentUserId]: choice };
+            await updateDoc(gameRef, { roundChoices: newRoundChoices });
+
+            if (Object.keys(newRoundChoices).length === activePlayers.length) {
+                const votes = Object.values(newRoundChoices).filter(c => c === 'vote').length;
+                const continues = activePlayers.length - votes;
+                if (votes > continues) {
+                    await updateDoc(gameRef, { status: 'voting', voteEndTime: new Date(Date.now() + 30000) });
+                } else {
+                    const newTurnOrder = shuffleArray([...gameData.turnOrder]);
+                    await updateDoc(gameRef, { 
+                        status: 'playing', 
+                        round: gameData.round + 1,
+                        roundChoices: {}, 
+                        currentPlayerUid: newTurnOrder[0], 
+                        turnOrder: newTurnOrder, 
+                    });
+                }
+            }
+        }
+
+        // Vote
+        if (e.target.classList.contains('vote-btn')) {
+            const votedForUid = e.target.dataset.voteUid;
+            await updateDoc(gameRef, {
+                [`votes.${currentUserId}`]: votedForUid
+            });
+        }
+
+        // Play Again
+        if (e.target.id === 'playAgainBtn') {
+             const secretWord = getRandomWord(gameData.usedWords);
+             const shuffledPlayers = shuffleArray([...gameData.players]);
+             const newTurnOrder = shuffledPlayers.map(p => p.uid);
+             const firstPlayerUid = newTurnOrder[0];
+             const eligibleImposters = shuffledPlayers.filter(p => p.uid !== firstPlayerUid);
+             const imposter = eligibleImposters[Math.floor(Math.random() * eligibleImposters.length)];
+             const newPlayers = gameData.players.map(p => ({...p, role: p.uid === imposter.uid ? 'imposter' : 'crew', disconnected: false}));
+             
+             await updateDoc(gameRef, {
+                 status: 'playing', 
+                 secretWord: secretWord, 
+                 players: newPlayers,
+                 words: [], 
+                 votes: {}, 
+                 winner: null, 
+                 votedOutUid: null, 
+                 round: 1, 
+                 roundChoices: {},
+                 currentPlayerUid: firstPlayerUid, 
+                 turnOrder: newTurnOrder, 
+                 revealedRoles: {},
+                 usedWords: [...(gameData.usedWords || []), secretWord]
+             });
+        }
+    });
+
     onAuthStateChanged(auth, async (user) => {
         if (user) {
             currentUserId = user.uid;
