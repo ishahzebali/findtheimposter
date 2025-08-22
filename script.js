@@ -77,8 +77,6 @@ function showScreen(screenName) {
         screens[screenName].classList.remove('hidden');
     }
     document.querySelectorAll('.confetti').forEach(c => c.remove());
-    if (countdownInterval) clearInterval(countdownInterval);
-    countdownInterval = null;
 }
 
     // --- Sound & Celebration ---
@@ -420,6 +418,7 @@ async function tallyVotes(gameData) {
                 countdownInterval = null;
             }
 
+<<<<<<< HEAD
                 if (me?.isHost && localPlayerList.length > gameData.players.length) {
                     const disconnectedPlayer = localPlayerList.find(p => !gameData.players.some(gp => gp.uid === p.uid));
                     if (disconnectedPlayer) {
@@ -428,6 +427,63 @@ async function tallyVotes(gameData) {
                             playerRef.disconnected = true;
                             await updateDoc(doc(db, gamesCollectionPath, gameId), { players: gameData.players });
                         }
+=======
+            if (me?.isHost && localPlayerList.length > gameData.players.length) {
+                const disconnectedPlayer = localPlayerList.find(p => !gameData.players.some(gp => gp.uid === p.uid));
+                if (disconnectedPlayer) {
+                    const playerRef = gameData.players.find(p => p.uid === disconnectedPlayer.uid);
+                    if (playerRef && !playerRef.disconnected) {
+                        playerRef.disconnected = true;
+                        await updateDoc(doc(db, gamesCollectionPath, gameId), { players: gameData.players });
+                    }
+                }
+            }
+            localPlayerList = gameData.players;
+
+            if (gameData.status === 'voting' && Object.keys(gameData.votes).length === activePlayers.length) {
+                if (me?.isHost) {
+                    await tallyVotes(gameData);
+                }
+                return;
+            }
+
+            if (isRevealingRole) return;
+
+            switch (gameData.status) {
+                case 'lobby': renderLobby(gameData); showScreen('lobby'); break;
+                case 'starting': renderStarting(gameData); showScreen('lobby'); break;
+                case 'playing': 
+                    if (!gameData.revealedRoles || !gameData.revealedRoles[currentUserId]) {
+                        renderRoleReveal(gameData);
+                    } else {
+                        renderGame(gameData);
+                        showScreen('game');
+                    }
+                    break;
+                case 'voting': 
+                    renderGame(gameData); 
+                    showScreen('game'); 
+                    if (me?.isHost) {
+                        setTimeout(async () => {
+                            const freshSnap = await getDoc(doc(db, gamesCollectionPath, gameId));
+                            if (freshSnap.exists() && freshSnap.data().status === 'voting') {
+                                await tallyVotes(freshSnap.data());
+                            }
+                        }, 30000);
+                    }
+                    const timerEl = document.getElementById('vote-timer');
+                    if (timerEl) {
+                        let timeLeft = 30;
+                        timerEl.textContent = timeLeft;
+                        countdownInterval = setInterval(() => {
+                            timeLeft--;
+                            timerEl.textContent = timeLeft > 0 ? timeLeft : 0;
+                            if (timeLeft <= 0) {
+                                clearInterval(countdownInterval);
+                                countdownInterval = null;
+                            }
+                        }, 1000);
+>>>>>>> parent of c5375d0 (updated ui and logic)
                     }
                 }
                 localPlayerList = gameData.players;
@@ -601,6 +657,7 @@ async function tallyVotes(gameData) {
             const newRoundChoices = { ...gameData.roundChoices, [currentUserId]: choice };
             await updateDoc(gameRef, { roundChoices: newRoundChoices });
 
+<<<<<<< HEAD
             if (Object.keys(newRoundChoices).length === activePlayers.length) {
                 const votes = Object.values(newRoundChoices).filter(c => c === 'vote').length;
                 const continues = activePlayers.length - votes;
@@ -616,6 +673,65 @@ async function tallyVotes(gameData) {
                         turnOrder: newTurnOrder, 
                     });
                 }
+=======
+                await updateDoc(gameRef, {
+                    status: 'playing',
+                    players: playersWithRoles,
+                    secretWord: secretWord,
+                    currentPlayerUid: firstPlayerUid, 
+                    turnOrder: turnOrder,
+                    round: 1,
+                    roundChoices: {},
+                    words: [],
+                    votes: {},
+                    revealedRoles: {},
+                    usedWords: [...(gameData.usedWords || []), secretWord]
+                });
+            }
+        }, 10000);
+    }
+});
+
+document.getElementById('game-screen').addEventListener('click', async (e) => {
+    const gameRef = doc(db, gamesCollectionPath, currentGameId);
+    const gameSnap = await getDoc(gameRef);
+    if (!gameSnap.exists()) return;
+    const gameData = gameSnap.data();
+    const activePlayers = gameData.players.filter(p => !p.disconnected);
+
+    // Submit Word
+    if (e.target.id === 'submitWordBtn') {
+        const wordInput = document.getElementById('wordInput').value.trim();
+        if (!wordInput) return;
+        
+        const me = gameData.players.find(p => p.uid === currentUserId);
+        const newWords = [...gameData.words, { uid: currentUserId, name: me.name, word: wordInput, round: gameData.round }];
+        
+        await updateDoc(gameRef, { words: newWords });
+        await advanceTurn({ ...gameData, words: newWords });
+    }
+
+    // Handle Round End Choice
+    if (e.target.id === 'continueBtn' || e.target.id === 'voteNowBtn') {
+        const choice = e.target.id === 'continueBtn' ? 'continue' : 'vote';
+        const newRoundChoices = { ...gameData.roundChoices, [currentUserId]: choice };
+        await updateDoc(gameRef, { roundChoices: newRoundChoices });
+
+        if (Object.keys(newRoundChoices).length === activePlayers.length) {
+            const votes = Object.values(newRoundChoices).filter(c => c === 'vote').length;
+            const continues = activePlayers.length - votes;
+            if (votes > continues) {
+                await updateDoc(gameRef, { status: 'voting' });
+            } else {
+                const newTurnOrder = shuffleArray([...gameData.turnOrder]);
+                await updateDoc(gameRef, { 
+                    status: 'playing', 
+                    round: gameData.round + 1,
+                    roundChoices: {}, 
+                    currentPlayerUid: newTurnOrder[0], 
+                    turnOrder: newTurnOrder, 
+                });
+>>>>>>> parent of c5375d0 (updated ui and logic)
             }
         }
 
