@@ -26,18 +26,10 @@ window.addEventListener('DOMContentLoaded', () => {
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-imposter-game';
     const gamesCollectionPath = `artifacts/${appId}/public/data/games`;
 
-// --- Global State ---
-let currentUserId = null;
-let currentGameId = null;
-let gameUnsubscribe = null;
-let localPlayerList = [];
-let audioStarted = false;
-let countdownInterval = null;
-let isRevealingRole = false;
-
-    // --- Sound Effects ---
-    const winSound = new Tone.Synth({ oscillator: { type: "sine" } }).toDestination();
-    const loseSound = new Tone.Synth({ oscillator: { type: "triangle" } }).toDestination();
+    // --- Global State ---
+    let currentUserId = null;
+    let currentGameId = null;
+    let gameUnsubscribe = null;
 
     // --- UI Elements ---
     const screens = {
@@ -55,11 +47,7 @@ let isRevealingRole = false;
         "Music", "Art", "Science", "History", "Math", "Language", "Computer", "Phone", "Television", "Guitar", "Piano", "Drums",
         "Soccer", "Basketball", "Baseball", "Tennis", "Swimming", "Running", "Doctor", "Teacher", "Artist", "Engineer", "Chef"
     ];
-    const getRandomWord = (usedWords = []) => {
-        const availableWords = wordList.filter(word => !usedWords.includes(word));
-        if (availableWords.length === 0) return wordList[Math.floor(Math.random() * wordList.length)]; // Fallback
-        return availableWords[Math.floor(Math.random() * availableWords.length)];
-    };
+    const getRandomWord = () => wordList[Math.floor(Math.random() * wordList.length)];
 
     // --- Helper: Shuffle Array ---
     function shuffleArray(array) {
@@ -70,53 +58,18 @@ let isRevealingRole = false;
         return array;
     }
 
-// --- UI Control ---
-function showScreen(screenName) {
-    Object.values(screens).forEach(screen => screen.classList.add('hidden'));
-    if (screens[screenName]) {
-        screens[screenName].classList.remove('hidden');
-    }
-    document.querySelectorAll('.confetti').forEach(c => c.remove());
-}
-
-    // --- Sound & Celebration ---
-    async function startAudio() {
-        if (!audioStarted) {
-            await Tone.start();
-            audioStarted = true;
-            console.log('Audio context started!');
-        }
-    }
-
-    async function triggerCelebration(winner, me) {
-        await startAudio();
-
-        if (me.role === 'imposter' && winner === 'Imposter' || me.role === 'crew' && winner === 'Crew') {
-            winSound.triggerAttackRelease("C5", "8n", Tone.now());
-            winSound.triggerAttackRelease("E5", "8n", Tone.now() + 0.2);
-            winSound.triggerAttackRelease("G5", "8n", Tone.now() + 0.4);
-        } else {
-            loseSound.triggerAttackRelease("G2", "4n", Tone.now());
-        }
-
-        const colors = winner === 'Crew' ? ['#50c878', '#a3d9a5', '#ffffff'] : ['#e94560', '#f08080', '#ffffff'];
-        for (let i = 0; i < 100; i++) {
-            const confetti = document.createElement('div');
-            confetti.className = 'confetti';
-            confetti.style.left = `${Math.random() * 100}vw`;
-            confetti.style.animationDelay = `${Math.random() * 5}s`;
-            confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
-            document.body.appendChild(confetti);
+    // --- UI Control ---
+    function showScreen(screenName) {
+        Object.values(screens).forEach(screen => {
+            if (screen) screen.classList.add('hidden');
+        });
+        if (screens[screenName]) {
+            screens[screenName].classList.remove('hidden');
         }
     }
 
     // --- Render Functions ---
     function renderLobby(gameData) {
-        const lobbyContent = document.getElementById('lobby-content');
-        if (!lobbyContent) return;
-
-        lobbyContent.classList.remove('hidden');
-        document.getElementById('countdown-container').classList.add('hidden');
         document.getElementById('lobbyGameId').textContent = gameData.gameId;
         document.getElementById('gameScreenId').textContent = gameData.gameId;
         document.getElementById('playerCount').textContent = gameData.players.length;
@@ -143,71 +96,23 @@ function showScreen(screenName) {
             waitingForHost.classList.remove('hidden');
         }
     }
-
-    function renderStarting(gameData) {
-        const lobbyContent = document.getElementById('lobby-content');
-        const countdownContainer = document.getElementById('countdown-container');
-        if (!lobbyContent || !countdownContainer) return;
-
-        lobbyContent.classList.add('hidden');
-        countdownContainer.classList.remove('hidden');
-        const timerEl = document.getElementById('countdown-timer');
-
-        if (countdownInterval) clearInterval(countdownInterval);
-        countdownInterval = setInterval(() => {
-            const remaining = Math.ceil((gameData.startTime.toDate() - new Date()) / 1000);
-            if (timerEl) {
-                timerEl.textContent = remaining > 0 ? remaining : 0;
-            }
-            if (remaining <= 0) {
-                clearInterval(countdownInterval);
-                countdownInterval = null;
-            }
-        }, 1000);
-    }
-
-    async function renderRoleReveal(gameData) {
-        isRevealingRole = true;
-        const me = gameData.players.find(p => p.uid === currentUserId);
-        const roleEl = document.getElementById('reveal-role');
-        const wordEl = document.getElementById('reveal-word');
-        if (!roleEl || !wordEl) return;
-
-        roleEl.textContent = me.role.toUpperCase();
-        roleEl.className = `reveal-role ${me.role}`;
-        wordEl.textContent = me.role === 'imposter' ? '???' : gameData.secretWord;
-
-        showScreen('role-reveal');
-        
-        setTimeout(async () => {
-            if (currentGameId) {
-                const gameRef = doc(db, gamesCollectionPath, currentGameId);
-                await updateDoc(gameRef, { [`revealedRoles.${currentUserId}`]: true });
-                isRevealingRole = false;
-            }
-        }, 4000);
-    }
-
-
+    
     function renderGame(gameData) {
         const me = gameData.players.find(p => p.uid === currentUserId);
-        const gameContent = document.getElementById('game-content');
-        if (!me || !gameContent) return;
-        
         const isMyTurn = gameData.currentPlayerUid === currentUserId;
+        const gameContent = document.getElementById('game-content');
+        
         const orderedPlayers = gameData.turnOrder.map(uid => gameData.players.find(p => p.uid === uid));
 
         let playersHTML = orderedPlayers.map(player => {
             const wordsForPlayer = gameData.words.filter(w => w.uid === player.uid).map(w => w.word).join(', ');
             const isCurrentPlayer = gameData.currentPlayerUid === player.uid;
-            const hasVoted = gameData.votes && gameData.votes[player.uid];
-            const canVote = player.uid !== currentUserId && !player.disconnected && gameData.status === 'voting' && !(gameData.votes && gameData.votes[currentUserId]);
+            const canVote = player.uid !== currentUserId && gameData.status === 'voting' && !(gameData.votes && gameData.votes[currentUserId]);
             
             return `
-                <div class="player-card ${isCurrentPlayer && gameData.status === 'playing' ? 'current-player' : ''} ${player.disconnected ? 'disconnected' : ''}">
-                    <p class="name">${player.name} ${player.isBot ? '🤖' : ''} ${player.disconnected ? '(Left)' : ''}</p>
+                <div class="player-card ${isCurrentPlayer && gameData.status === 'playing' ? 'current-player' : ''}">
+                    <p class="name">${player.name}</p>
                     <p class="word">${wordsForPlayer || '...'}</p>
-                    ${hasVoted && gameData.status === 'voting' ? '<div class="voted-indicator">Voted ✓</div>' : ''}
                     ${canVote ? `<button data-vote-uid="${player.uid}" class="btn blue vote-btn">Vote</button>` : ''}
                 </div>
             `;
@@ -224,6 +129,13 @@ function showScreen(screenName) {
                     </div>
                 </div>
             `;
+        } else if (gameData.status === 'voting') {
+             turnHTML = `
+                <div class="game-input-area">
+                    <h3>Vote for the Imposter!</h3>
+                    <p>${(gameData.votes && gameData.votes[currentUserId]) ? 'Waiting for others...' : 'Click vote on a player card.'}</p>
+                </div>
+             `;
         }
 
         gameContent.innerHTML = `
@@ -241,16 +153,15 @@ function showScreen(screenName) {
 
     function renderRoundEnd(gameData) {
         const gameContent = document.getElementById('game-content');
-        if (!gameContent) return;
-        
         const myChoice = gameData.roundChoices ? gameData.roundChoices[currentUserId] : null;
+
         const orderedPlayers = gameData.turnOrder.map(uid => gameData.players.find(p => p.uid === uid));
 
         let playersHTML = orderedPlayers.map(player => {
             const wordsForPlayer = gameData.words.filter(w => w.uid === player.uid).map(w => w.word).join(', ');
             return `
-                <div class="player-card ${player.disconnected ? 'disconnected' : ''}">
-                    <p class="name">${player.name} ${player.isBot ? '🤖' : ''} ${player.disconnected ? '(Left)' : ''}</p>
+                <div class="player-card">
+                    <p class="name">${player.name}</p>
                     <p class="word">${wordsForPlayer || '...'}</p>
                 </div>
             `;
@@ -280,9 +191,6 @@ function showScreen(screenName) {
     function renderFinished(gameData) {
         const imposter = gameData.players.find(p => p.role === 'imposter');
         const me = gameData.players.find(p => p.uid === currentUserId);
-        if (!imposter || !me) return;
-
-        triggerCelebration(gameData.winner, me);
         const gameContent = document.getElementById('game-content');
 
         let playersHTML = gameData.players.map(player => {
@@ -292,9 +200,9 @@ function showScreen(screenName) {
             const voteText = votedForPlayer ? `Voted for ${votedForPlayer.name}` : 'No vote';
 
             return `
-                <div class="player-card ${player.disconnected ? 'disconnected' : ''}">
+                <div class="player-card">
                     <div style="display:flex; justify-content: space-between; align-items: center;">
-                        <p class="name">${player.name} ${player.isBot ? '🤖' : ''}</p>
+                        <p class="name">${player.name}</p>
                         <span class="role-tag ${player.role === 'imposter' ? 'imposter' : 'crew'}">${player.role.toUpperCase()}</span>
                     </div>
                     <p class="word">${wordsForPlayer}</p>
@@ -317,7 +225,6 @@ function showScreen(screenName) {
 
     // --- Game Logic Handlers ---
     async function handleCreateGame() {
-        await startAudio();
         const playerName = document.getElementById('playerName').value.trim();
         if (!playerName || !currentUserId) return;
 
@@ -334,7 +241,6 @@ function showScreen(screenName) {
             round: 1,
             roundChoices: {},
             turnOrder: [],
-            usedWords: [],
             createdAt: new Date(),
         };
 
@@ -343,7 +249,6 @@ function showScreen(screenName) {
     }
 
     async function handleJoinGame() {
-        await startAudio();
         const playerName = document.getElementById('playerName').value.trim();
         const gameId = document.getElementById('joinGameIdInput').value.trim().toUpperCase();
         if (!playerName || !gameId || !currentUserId) return;
@@ -363,11 +268,10 @@ function showScreen(screenName) {
         }
     }
 
-async function tallyVotes(gameData) {
-    const gameRef = doc(db, gamesCollectionPath, currentGameId);
-    const activePlayers = gameData.players.filter(p => !p.disconnected);
-    const voteCounts = {};
-    Object.values(gameData.votes).forEach(uid => { voteCounts[uid] = (voteCounts[uid] || 0) + 1; });
+    async function tallyVotes(gameData) {
+        const gameRef = doc(db, gamesCollectionPath, currentGameId);
+        const voteCounts = {};
+        Object.values(gameData.votes).forEach(uid => { voteCounts[uid] = (voteCounts[uid] || 0) + 1; });
 
         let maxVotes = 0;
         let candidates = [];
@@ -407,124 +311,22 @@ async function tallyVotes(gameData) {
         localStorage.setItem('pretenderGameId', gameId);
         if (gameUnsubscribe) gameUnsubscribe();
 
-    gameUnsubscribe = onSnapshot(doc(db, gamesCollectionPath, gameId), async (doc) => {
-        if (doc.exists()) {
-            const gameData = doc.data();
-            const me = gameData.players.find(p => p.uid === currentUserId);
-            const activePlayers = gameData.players.filter(p => !p.disconnected);
+        gameUnsubscribe = onSnapshot(doc(db, gamesCollectionPath, gameId), async (doc) => {
+            if (doc.exists()) {
+                const gameData = doc.data();
+                const me = gameData.players.find(p => p.uid === currentUserId);
 
-            if (countdownInterval && gameData.status !== 'starting' && gameData.status !== 'voting') {
-                clearInterval(countdownInterval);
-                countdownInterval = null;
-            }
-
-<<<<<<< HEAD
-                if (me?.isHost && localPlayerList.length > gameData.players.length) {
-                    const disconnectedPlayer = localPlayerList.find(p => !gameData.players.some(gp => gp.uid === p.uid));
-                    if (disconnectedPlayer) {
-                        const playerRef = gameData.players.find(p => p.uid === disconnectedPlayer.uid);
-                        if (playerRef && !playerRef.disconnected) {
-                            playerRef.disconnected = true;
-                            await updateDoc(doc(db, gamesCollectionPath, gameId), { players: gameData.players });
-                        }
-=======
-            if (me?.isHost && localPlayerList.length > gameData.players.length) {
-                const disconnectedPlayer = localPlayerList.find(p => !gameData.players.some(gp => gp.uid === p.uid));
-                if (disconnectedPlayer) {
-                    const playerRef = gameData.players.find(p => p.uid === disconnectedPlayer.uid);
-                    if (playerRef && !playerRef.disconnected) {
-                        playerRef.disconnected = true;
-                        await updateDoc(doc(db, gamesCollectionPath, gameId), { players: gameData.players });
-                    }
-                }
-            }
-            localPlayerList = gameData.players;
-
-            if (gameData.status === 'voting' && Object.keys(gameData.votes).length === activePlayers.length) {
-                if (me?.isHost) {
-                    await tallyVotes(gameData);
-                }
-                return;
-            }
-
-            if (isRevealingRole) return;
-
-            switch (gameData.status) {
-                case 'lobby': renderLobby(gameData); showScreen('lobby'); break;
-                case 'starting': renderStarting(gameData); showScreen('lobby'); break;
-                case 'playing': 
-                    if (!gameData.revealedRoles || !gameData.revealedRoles[currentUserId]) {
-                        renderRoleReveal(gameData);
-                    } else {
-                        renderGame(gameData);
-                        showScreen('game');
-                    }
-                    break;
-                case 'voting': 
-                    renderGame(gameData); 
-                    showScreen('game'); 
-                    if (me?.isHost) {
-                        setTimeout(async () => {
-                            const freshSnap = await getDoc(doc(db, gamesCollectionPath, gameId));
-                            if (freshSnap.exists() && freshSnap.data().status === 'voting') {
-                                await tallyVotes(freshSnap.data());
-                            }
-                        }, 30000);
-                    }
-                    const timerEl = document.getElementById('vote-timer');
-                    if (timerEl) {
-                        let timeLeft = 30;
-                        timerEl.textContent = timeLeft;
-                        countdownInterval = setInterval(() => {
-                            timeLeft--;
-                            timerEl.textContent = timeLeft > 0 ? timeLeft : 0;
-                            if (timeLeft <= 0) {
-                                clearInterval(countdownInterval);
-                                countdownInterval = null;
-                            }
-                        }, 1000);
->>>>>>> parent of c5375d0 (updated ui and logic)
-                    }
-                }
-                localPlayerList = gameData.players;
-
-                if (gameData.status === 'voting' && Object.keys(gameData.votes).length === activePlayers.length) {
+                if (gameData.status === 'voting' && Object.keys(gameData.votes).length === gameData.players.length) {
                     if (me?.isHost) {
                         await tallyVotes(gameData);
                     }
                     return;
                 }
 
-                if (isRevealingRole) return;
-
                 switch (gameData.status) {
                     case 'lobby': renderLobby(gameData); showScreen('lobby'); break;
-                    case 'starting': renderStarting(gameData); showScreen('lobby'); break;
-                    case 'playing': 
-                        if (!gameData.revealedRoles || !gameData.revealedRoles[currentUserId]) {
-                            renderRoleReveal(gameData);
-                        } else {
-                            renderGame(gameData);
-                            showScreen('game');
-                        }
-                        break;
-                    case 'voting': 
-                        renderGame(gameData); 
-                        showScreen('game'); 
-                        if (!countdownInterval) {
-                            const timerEl = document.getElementById('vote-timer');
-                            if (timerEl) {
-                                countdownInterval = setInterval(() => {
-                                    const remaining = Math.ceil((gameData.voteEndTime.toDate() - new Date()) / 1000);
-                                    timerEl.textContent = remaining > 0 ? remaining : 0;
-                                    if (remaining <= 0) {
-                                        clearInterval(countdownInterval);
-                                        countdownInterval = null;
-                                    }
-                                }, 1000);
-                            }
-                        }
-                        break;
+                    case 'playing':
+                    case 'voting': renderGame(gameData); showScreen('game'); break;
                     case 'round-end': renderRoundEnd(gameData); showScreen('game'); break;
                     case 'finished': renderFinished(gameData); showScreen('game'); break;
                 }
@@ -537,7 +339,6 @@ async function tallyVotes(gameData) {
 
     function leaveGame() {
         if (gameUnsubscribe) gameUnsubscribe();
-        if (countdownInterval) clearInterval(countdownInterval);
         localStorage.removeItem('pretenderGameId');
         currentGameId = null;
         gameUnsubscribe = null;
@@ -546,24 +347,13 @@ async function tallyVotes(gameData) {
 
     async function advanceTurn(gameData) {
         const gameRef = doc(db, gamesCollectionPath, currentGameId);
-        const activePlayers = gameData.players.filter(p => !p.disconnected);
-        
         const myIndexInTurnOrder = gameData.turnOrder.indexOf(gameData.currentPlayerUid);
         const wordsThisRound = gameData.words.filter(w => w.round === gameData.round);
 
-        if (wordsThisRound.length === activePlayers.length) {
+        if (wordsThisRound.length === gameData.players.length) {
             await updateDoc(gameRef, { status: 'round-end' });
         } else {
-            let nextPlayerIndex = (myIndexInTurnOrder + 1) % gameData.turnOrder.length;
-            let nextPlayerUid = gameData.turnOrder[nextPlayerIndex];
-            let nextPlayer = gameData.players.find(p => p.uid === nextPlayerUid);
-
-            while(nextPlayer.disconnected) {
-                nextPlayerIndex = (nextPlayerIndex + 1) % gameData.turnOrder.length;
-                nextPlayerUid = gameData.turnOrder[nextPlayerIndex];
-                nextPlayer = gameData.players.find(p => p.uid === nextPlayerUid);
-            }
-            
+            const nextPlayerUid = gameData.turnOrder[(myIndexInTurnOrder + 1) % gameData.turnOrder.length];
             await updateDoc(gameRef, { 
                 currentPlayerUid: nextPlayerUid, 
             });
@@ -591,44 +381,32 @@ async function tallyVotes(gameData) {
     document.getElementById('lobby-screen').addEventListener('click', async (e) => {
         if (e.target.id === 'startGameBtn') {
             const gameRef = doc(db, gamesCollectionPath, currentGameId);
+            const gameData = (await getDoc(gameRef)).data();
+            const secretWord = getRandomWord();
+            
+            const shuffledPlayers = shuffleArray([...gameData.players]);
+            const turnOrder = shuffledPlayers.map(p => p.uid);
+
+            const firstPlayerUid = turnOrder[0];
+            const eligibleImposters = shuffledPlayers.filter(p => p.uid !== firstPlayerUid);
+            const imposter = eligibleImposters[Math.floor(Math.random() * eligibleImposters.length)];
+            
+            const playersWithRoles = gameData.players.map(p => ({
+                ...p,
+                role: p.uid === imposter.uid ? 'imposter' : 'crew'
+            }));
+
             await updateDoc(gameRef, {
-                status: 'starting',
-                startTime: new Date(Date.now() + 10000)
+                status: 'playing',
+                players: playersWithRoles,
+                secretWord: secretWord,
+                currentPlayerUid: firstPlayerUid, 
+                turnOrder: turnOrder,
+                round: 1,
+                roundChoices: {},
+                words: [],
+                votes: {},
             });
-
-            setTimeout(async () => {
-                const gameSnap = await getDoc(gameRef);
-                if (gameSnap.exists() && gameSnap.data().status === 'starting') {
-                    const gameData = gameSnap.data();
-                    const secretWord = getRandomWord(gameData.usedWords);
-                    
-                    const shuffledPlayers = shuffleArray([...gameData.players]);
-                    const turnOrder = shuffledPlayers.map(p => p.uid);
-
-                    const firstPlayerUid = turnOrder[0];
-                    const eligibleImposters = shuffledPlayers.filter(p => p.uid !== firstPlayerUid);
-                    const imposter = eligibleImposters[Math.floor(Math.random() * eligibleImposters.length)];
-                    
-                    const playersWithRoles = gameData.players.map(p => ({
-                        ...p,
-                        role: p.uid === imposter.uid ? 'imposter' : 'crew'
-                    }));
-
-                    await updateDoc(gameRef, {
-                        status: 'playing',
-                        players: playersWithRoles,
-                        secretWord: secretWord,
-                        currentPlayerUid: firstPlayerUid, 
-                        turnOrder: turnOrder,
-                        round: 1,
-                        roundChoices: {},
-                        words: [],
-                        votes: {},
-                        revealedRoles: {},
-                        usedWords: [...(gameData.usedWords || []), secretWord]
-                    });
-                }
-            }, 10000);
         }
     });
 
@@ -657,12 +435,11 @@ async function tallyVotes(gameData) {
             const newRoundChoices = { ...gameData.roundChoices, [currentUserId]: choice };
             await updateDoc(gameRef, { roundChoices: newRoundChoices });
 
-<<<<<<< HEAD
             if (Object.keys(newRoundChoices).length === activePlayers.length) {
                 const votes = Object.values(newRoundChoices).filter(c => c === 'vote').length;
                 const continues = activePlayers.length - votes;
                 if (votes > continues) {
-                    await updateDoc(gameRef, { status: 'voting', voteEndTime: new Date(Date.now() + 30000) });
+                    await updateDoc(gameRef, { status: 'voting' });
                 } else {
                     const newTurnOrder = shuffleArray([...gameData.turnOrder]);
                     await updateDoc(gameRef, { 
@@ -673,65 +450,6 @@ async function tallyVotes(gameData) {
                         turnOrder: newTurnOrder, 
                     });
                 }
-=======
-                await updateDoc(gameRef, {
-                    status: 'playing',
-                    players: playersWithRoles,
-                    secretWord: secretWord,
-                    currentPlayerUid: firstPlayerUid, 
-                    turnOrder: turnOrder,
-                    round: 1,
-                    roundChoices: {},
-                    words: [],
-                    votes: {},
-                    revealedRoles: {},
-                    usedWords: [...(gameData.usedWords || []), secretWord]
-                });
-            }
-        }, 10000);
-    }
-});
-
-document.getElementById('game-screen').addEventListener('click', async (e) => {
-    const gameRef = doc(db, gamesCollectionPath, currentGameId);
-    const gameSnap = await getDoc(gameRef);
-    if (!gameSnap.exists()) return;
-    const gameData = gameSnap.data();
-    const activePlayers = gameData.players.filter(p => !p.disconnected);
-
-    // Submit Word
-    if (e.target.id === 'submitWordBtn') {
-        const wordInput = document.getElementById('wordInput').value.trim();
-        if (!wordInput) return;
-        
-        const me = gameData.players.find(p => p.uid === currentUserId);
-        const newWords = [...gameData.words, { uid: currentUserId, name: me.name, word: wordInput, round: gameData.round }];
-        
-        await updateDoc(gameRef, { words: newWords });
-        await advanceTurn({ ...gameData, words: newWords });
-    }
-
-    // Handle Round End Choice
-    if (e.target.id === 'continueBtn' || e.target.id === 'voteNowBtn') {
-        const choice = e.target.id === 'continueBtn' ? 'continue' : 'vote';
-        const newRoundChoices = { ...gameData.roundChoices, [currentUserId]: choice };
-        await updateDoc(gameRef, { roundChoices: newRoundChoices });
-
-        if (Object.keys(newRoundChoices).length === activePlayers.length) {
-            const votes = Object.values(newRoundChoices).filter(c => c === 'vote').length;
-            const continues = activePlayers.length - votes;
-            if (votes > continues) {
-                await updateDoc(gameRef, { status: 'voting' });
-            } else {
-                const newTurnOrder = shuffleArray([...gameData.turnOrder]);
-                await updateDoc(gameRef, { 
-                    status: 'playing', 
-                    round: gameData.round + 1,
-                    roundChoices: {}, 
-                    currentPlayerUid: newTurnOrder[0], 
-                    turnOrder: newTurnOrder, 
-                });
->>>>>>> parent of c5375d0 (updated ui and logic)
             }
         }
 
@@ -765,7 +483,6 @@ document.getElementById('game-screen').addEventListener('click', async (e) => {
                  roundChoices: {},
                  currentPlayerUid: firstPlayerUid, 
                  turnOrder: newTurnOrder, 
-                 revealedRoles: {},
                  usedWords: [...(gameData.usedWords || []), secretWord]
              });
         }
