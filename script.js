@@ -34,7 +34,6 @@ let localPlayerList = [];
 let audioStarted = false;
 let countdownInterval = null;
 let isRevealingRole = false;
-let hostVoteTimerWatcher = null;
 
     // --- Sound Effects ---
     const winSound = new Tone.Synth({ oscillator: { type: "sine" } }).toDestination();
@@ -80,8 +79,6 @@ function showScreen(screenName) {
     document.querySelectorAll('.confetti').forEach(c => c.remove());
     if (countdownInterval) clearInterval(countdownInterval);
     countdownInterval = null;
-    if (hostVoteTimerWatcher) clearInterval(hostVoteTimerWatcher);
-    hostVoteTimerWatcher = null;
 }
 
     // --- Sound & Celebration ---
@@ -369,9 +366,6 @@ function showScreen(screenName) {
     }
 
 async function tallyVotes(gameData) {
-    if (countdownInterval) clearInterval(countdownInterval);
-    countdownInterval = null;
-
     const gameRef = doc(db, gamesCollectionPath, currentGameId);
     const activePlayers = gameData.players.filter(p => !p.disconnected);
     const voteCounts = {};
@@ -420,7 +414,7 @@ async function tallyVotes(gameData) {
             const gameData = doc.data();
             const me = gameData.players.find(p => p.uid === currentUserId);
             const activePlayers = gameData.players.filter(p => !p.disconnected);
-
+            
             if (countdownInterval && gameData.status !== 'starting' && gameData.status !== 'voting') {
                 clearInterval(countdownInterval);
                 countdownInterval = null;
