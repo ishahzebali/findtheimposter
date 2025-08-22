@@ -26,14 +26,15 @@ window.addEventListener('DOMContentLoaded', () => {
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-imposter-game';
     const gamesCollectionPath = `artifacts/${appId}/public/data/games`;
 
-    // --- Global State ---
-    let currentUserId = null;
-    let currentGameId = null;
-    let gameUnsubscribe = null;
-    let localPlayerList = [];
-    let audioStarted = false;
-    let countdownInterval = null;
-    let isRevealingRole = false;
+// --- Global State ---
+let currentUserId = null;
+let currentGameId = null;
+let gameUnsubscribe = null;
+let localPlayerList = [];
+let audioStarted = false;
+let countdownInterval = null;
+let isRevealingRole = false;
+let hostVoteTimerWatcher = null;
 
     // --- Sound Effects ---
     const winSound = new Tone.Synth({ oscillator: { type: "sine" } }).toDestination();
@@ -70,16 +71,18 @@ window.addEventListener('DOMContentLoaded', () => {
         return array;
     }
 
-    // --- UI Control ---
-    function showScreen(screenName) {
-        Object.values(screens).forEach(screen => {
-            if (screen) screen.classList.add('hidden');
-        });
-        if (screens[screenName]) {
-            screens[screenName].classList.remove('hidden');
-        }
-        document.querySelectorAll('.confetti').forEach(c => c.remove());
+// --- UI Control ---
+function showScreen(screenName) {
+    Object.values(screens).forEach(screen => screen.classList.add('hidden'));
+    if (screens[screenName]) {
+        screens[screenName].classList.remove('hidden');
     }
+    document.querySelectorAll('.confetti').forEach(c => c.remove());
+    if (countdownInterval) clearInterval(countdownInterval);
+    countdownInterval = null;
+    if (hostVoteTimerWatcher) clearInterval(hostVoteTimerWatcher);
+    hostVoteTimerWatcher = null;
+}
 
     // --- Sound & Celebration ---
     async function startAudio() {
@@ -365,14 +368,14 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function tallyVotes(gameData) {
-        if (countdownInterval) clearInterval(countdownInterval);
-        countdownInterval = null;
+async function tallyVotes(gameData) {
+    if (countdownInterval) clearInterval(countdownInterval);
+    countdownInterval = null;
 
-        const gameRef = doc(db, gamesCollectionPath, currentGameId);
-        const activePlayers = gameData.players.filter(p => !p.disconnected);
-        const voteCounts = {};
-        Object.values(gameData.votes).forEach(uid => { voteCounts[uid] = (voteCounts[uid] || 0) + 1; });
+    const gameRef = doc(db, gamesCollectionPath, currentGameId);
+    const activePlayers = gameData.players.filter(p => !p.disconnected);
+    const voteCounts = {};
+    Object.values(gameData.votes).forEach(uid => { voteCounts[uid] = (voteCounts[uid] || 0) + 1; });
 
         let maxVotes = 0;
         let candidates = [];
@@ -412,16 +415,16 @@ window.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('pretenderGameId', gameId);
         if (gameUnsubscribe) gameUnsubscribe();
 
-        gameUnsubscribe = onSnapshot(doc(db, gamesCollectionPath, gameId), async (doc) => {
-            if (doc.exists()) {
-                const gameData = doc.data();
-                const me = gameData.players.find(p => p.uid === currentUserId);
-                const activePlayers = gameData.players.filter(p => !p.disconnected);
+    gameUnsubscribe = onSnapshot(doc(db, gamesCollectionPath, gameId), async (doc) => {
+        if (doc.exists()) {
+            const gameData = doc.data();
+            const me = gameData.players.find(p => p.uid === currentUserId);
+            const activePlayers = gameData.players.filter(p => !p.disconnected);
 
-                if (countdownInterval && gameData.status !== 'starting' && gameData.status !== 'voting') {
-                    clearInterval(countdownInterval);
-                    countdownInterval = null;
-                }
+            if (countdownInterval && gameData.status !== 'starting' && gameData.status !== 'voting') {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
 
                 if (me?.isHost && localPlayerList.length > gameData.players.length) {
                     const disconnectedPlayer = localPlayerList.find(p => !gameData.players.some(gp => gp.uid === p.uid));
